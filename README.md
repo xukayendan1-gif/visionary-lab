@@ -93,7 +93,40 @@ cd frontend
 npm install --legacy-peer-deps
 ```
 
-### 3.3 Run the Development Server
+
+### 3.3 Configure your blob storage as a trusted source by adding it to `next.config.js`
+
+Your new `next.config.js` should look like this
+
+```typescript
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '8000',
+        pathname: '/api/v1/gallery/asset/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '<your-storage-account-name>.blob.core.windows.net',
+        port: '',
+        pathname: '/**',
+      },
+    ],
+  },
+};
+
+export default nextConfig;
+
+```
+
+
+### 3.4 Run the Development Server
 
 ```bash
 npm run dev
