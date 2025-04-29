@@ -12,13 +12,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'stoacakcswece.blob.core.windows.net',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'devstorageaccountgbb.blob.core.windows.net',
+        hostname: '<storage-account-name>.blob.core.windows.net',
         port: '',
         pathname: '/**',
       },
