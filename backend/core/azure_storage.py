@@ -158,6 +158,43 @@ class AzureBlobStorageService:
         except ResourceNotFoundError:
             self.blob_service_client.create_container(container_name)
 
+    def _preprocess_metadata_value(self, value: str) -> str:
+        """
+        Preprocess metadata value to comply with Azure Blob Storage requirements.
+        Removes newlines, tabs, and other invalid characters.
+
+        Args:
+            value: Metadata value to preprocess
+
+        Returns:
+            Processed string compatible with Azure Blob Storage
+        """
+        if value is None:
+            return ""
+
+        # Convert to string if not already
+        str_value = str(value)
+
+        # Replace newlines and tabs with spaces
+        str_value = str_value.replace('\n', ' ').replace(
+            '\r', ' ').replace('\t', ' ')
+
+        # Collapse multiple spaces into a single space
+        import re
+        str_value = re.sub(r'\s+', ' ', str_value)
+
+        # Trim leading/trailing whitespace
+        str_value = str_value.strip()
+
+        # Try to encode as Latin-1 as required by Azure
+        try:
+            str_value.encode('latin-1')
+            return str_value
+        except UnicodeEncodeError:
+            # Replace any non-Latin-1 characters
+            ascii_value = str_value.encode('ascii', 'replace').decode('ascii')
+            return ascii_value
+
     def normalize_folder_path(self, folder_path: Optional[str] = None) -> str:
         """
         Normalize a folder path to ensure consistent format
@@ -183,6 +220,8 @@ class AzureBlobStorageService:
             folder_path = f"{folder_path}/"
 
         return folder_path
+    
+    
 
     async def upload_asset(self, file: UploadFile, asset_type: str = "image",
                            metadata: Optional[Dict[str, str]] = None,
@@ -229,30 +268,15 @@ class AzureBlobStorageService:
             # Prepare metadata (all values must be strings)
             upload_metadata = {}
             if metadata:
-                # Azure Blob Storage metadata requires ASCII values in Latin-1 encoding
-                # We'll convert all Unicode strings to ASCII-safe strings
+                # Process each metadata value to make it Azure-compatible
                 for k, v in metadata.items():
                     # Skip None values
                     if v is None:
                         continue
 
-                    # Ensure value is string
-                    str_value = str(v)
-
-                    # Convert to ASCII-safe string
-                    # We'll replace any non-ASCII characters with their ASCII approximations
-                    try:
-                        # Test if it can be encoded as Latin-1 (required by Azure)
-                        str_value.encode('latin-1')
-                        # If successful, use the original string
-                        upload_metadata[k] = str_value
-                    except UnicodeEncodeError:
-                        # If it fails, replace problematic characters
-                        ascii_value = str_value.encode(
-                            'ascii', 'replace').decode('ascii')
-                        upload_metadata[k] = ascii_value
-                        print(
-                            f"Converted Unicode metadata for key '{k}': '{str_value}' -> '{ascii_value}'")
+                    # Process the value to make it Azure-compatible
+                    processed_value = self._preprocess_metadata_value(v)
+                    upload_metadata[k] = processed_value
 
             # Add folder path to metadata if it exists
             if normalized_folder_path:
