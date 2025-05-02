@@ -14,6 +14,8 @@ from backend.models.images import (
     ImageAnalyzeResponse,
     ImagePromptEnhancementRequest,
     ImagePromptEnhancementResponse,
+    ImagePromptBrandProtectionRequest,
+    ImagePromptBrandProtectionResponse,
     ImageFilenameGenerateRequest,
     ImageFilenameGenerateResponse,
 )

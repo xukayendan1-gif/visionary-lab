@@ -24,6 +24,8 @@ from backend.models.images import (
     ImageAnalyzeResponse,
     ImagePromptEnhancementRequest,
     ImagePromptEnhancementResponse,
+    ImagePromptBrandProtectionRequest,
+    ImagePromptBrandProtectionResponse,
     ImageFilenameGenerateRequest,
     ImageFilenameGenerateResponse,
     ImageSaveRequest,
@@ -36,7 +38,12 @@ from backend.core import llm_client, dalle_client, image_sas_token
 from backend.core.azure_storage import AzureBlobStorageService
 from backend.core.analyze import ImageAnalyzer
 from backend.core.config import settings
-from backend.core.instructions import analyze_image_system_message, image_prompt_enhancement_system_message, filename_system_message
+from backend.core.instructions import (analyze_image_system_message,
+                                       img_prompt_enhance_msg,
+                                       brand_protect_replace_msg,
+                                       brand_protect_neutralize_msg,
+                                       filename_system_message
+)
 
 router = APIRouter()
 
@@ -735,14 +742,10 @@ def analyze_image(req: ImageAnalyzeRequest):
 def enhance_image_prompt(req: ImagePromptEnhancementRequest):
     """
     Improves a given text to image prompt considering best practices for the image generation model.
-
-    Args:
-        original_prompt: Original text to image prompt.
-
-    Returns:
-        enhanced_prompt: Improved text to image prompt.
     """
     try:
+        system_message = img_prompt_enhance_msg
+
         # Ensure LLM client is available
         if llm_client is None:
             raise HTTPException(
@@ -753,7 +756,7 @@ def enhance_image_prompt(req: ImagePromptEnhancementRequest):
         original_prompt = req.original_prompt
         # Call the LLM to enhance the prompt
         messages = [
-            {"role": "system", "content": image_prompt_enhancement_system_message},
+            {"role": "system", "content": system_message},
             {"role": "user", "content": original_prompt},
         ]
         response = llm_client.chat.completions.create(messages=messages,
@@ -766,6 +769,51 @@ def enhance_image_prompt(req: ImagePromptEnhancementRequest):
     except Exception as e:
         logger.error(f"Error enhancing image prompt: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/prompt/protect", response_model=ImagePromptBrandProtectionResponse)
+def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
+    """
+    Rewrites a given prompt for brand protection.
+    """
+    try:
+        if req.brands_to_protect:
+            if req.protection_mode == "replace":
+                logger.info(f"Replace competitor brands of: {req.brands_to_protect}")
+                system_message = brand_protect_replace_msg.format(brands=req.brands_to_protect)
+            elif req.protection_mode == "neutralize":
+                logger.info(f"Neutralize competitor brands of: {req.brands_to_protect}")
+                system_message = brand_protect_neutralize_msg.format(brands=req.brands_to_protect)       
+        else:
+            logger.info(f"No brand protection specified.")
+            return ImagePromptBrandProtectionResponse(enhanced_prompt=req.original_prompt)
+
+        # Ensure LLM client is available
+        if llm_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM service is currently unavailable. Please check your environment configuration."
+            )
+
+        original_prompt = req.original_prompt
+        # Call the LLM to enhance the prompt
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": original_prompt},
+        ]
+        response = llm_client.chat.completions.create(messages=messages,
+                                                      model=settings.LLM_DEPLOYMENT,
+                                                      response_format={"type": "json_object"})
+        enhanced_prompt = json.loads(
+            response.choices[0].message.content).get('prompt')
+        return ImagePromptEnhancementResponse(enhanced_prompt=enhanced_prompt)
+
+    except Exception as e:
+        logger.error(f"Error enhancing image prompt: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 
 @router.post("/filename/generate", response_model=ImageFilenameGenerateResponse)

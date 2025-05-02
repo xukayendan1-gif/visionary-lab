@@ -9,7 +9,7 @@ from pydantic import validator
 class ImagePromptEnhancementRequest(BaseModel):
     """Request model for enhancing image generation prompts"""
     original_prompt: str = Field(...,
-                                 description="Prompt to enhance for image generation")
+                                 description="Prompt to enhance for image generation")    
 
 
 class ImagePromptEnhancementResponse(BaseModel):
@@ -18,7 +18,20 @@ class ImagePromptEnhancementResponse(BaseModel):
                                  description="Enhanced prompt for image generation")
 
 
-# Using OpenAI DALL-E as placeholder for gpt-image-1 because of API similarity
+class ImagePromptBrandProtectionRequest(BaseModel):
+    """Request model for enhancing image generation prompts"""
+    original_prompt: str = Field(...,
+                                 description="Prompt to protect for image generation")
+    brands_to_protect: Optional[str] = Field(None,
+                                            description="Str or comma-separated brands to protect in the prompt.")
+    protection_mode: Optional[str] = Field("neutralize",
+                                            description="Mode for brand protection: 'neutralize' (default) or 'replace'. Neutralize removes the brand, while replace substitutes competitirs with the protected brand.")
+    
+
+class ImagePromptBrandProtectionResponse(BaseModel):
+    """Response model for rewritten image generation prompts"""
+    enhanced_prompt: str = Field(...,
+                                 description="Rewritten prompt for image generation")
 
 
 class ImageGenerationRequest(BaseModel):
