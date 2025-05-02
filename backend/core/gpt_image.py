@@ -111,8 +111,8 @@ class GPTImageClient:
                 params["user"] = user
 
             # Add gpt-image-1 specific parameters that are supported by the client
-            if model == "gpt-image-1" and self.provider == "openai":
-                # Only include background if it's not the default
+            if model == "gpt-image-1":
+                # Include background parameter regardless of provider
                 if background != "auto":
                     params["background"] = background
 
