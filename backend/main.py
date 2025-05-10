@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import argparse
 import os
 import logging
 
@@ -52,7 +53,18 @@ def health_check():
     return {"status": "ok"}
 
 
-# This allows the file to be run directly with `python backend/main.py`
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(
+        description="Run the Visionary Lab backend server")
+    parser.add_argument(
+        "--port", type=int, help="Port to run the server on (default: 8000 or PORT env var)")
+    args = parser.parse_args()
+
+    # Use command-line port if specified, otherwise use environment PORT variable,
+    # and finally fall back to default 8000
+    port = args.port if args.port is not None else int(
+        os.environ.get("PORT", 80))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

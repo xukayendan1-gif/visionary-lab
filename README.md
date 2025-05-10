@@ -126,7 +126,7 @@ Once everything is set up:
 
    ```bash
    cd backend
-   uv run main.py
+   uv run main.py --port 8000
    ```
 
    The backend server will start on http://localhost:8000. You can verify it's running by visiting http://localhost:8000/api/v1/health in your browser.
