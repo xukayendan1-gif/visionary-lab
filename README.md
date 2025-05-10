@@ -82,6 +82,7 @@ The environment variables will be defined below.
 
 ```bash
 cd frontend
+cp .env.example .env
 ```
 
 ##### 3.2 Install Dependencies
@@ -113,7 +114,7 @@ npm install --legacy-peer-deps
 
 2. Configure your Storage Account in the frontend:
    ```bash
-   code frontend/next.config.ts
+   code frontend/.env
    ```
    Replace `<storage-account-name>` with your actual Azure storage account name.
 
@@ -125,7 +126,7 @@ Once everything is set up:
 
    ```bash
    cd backend
-   uv run fastapi dev
+   uv run main.py
    ```
 
    The backend server will start on http://localhost:8000. You can verify it's running by visiting http://localhost:8000/api/v1/health in your browser.
