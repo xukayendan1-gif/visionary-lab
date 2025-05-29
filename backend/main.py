@@ -1,12 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import argparse
 import os
 import logging
 
-from core.config import settings
-from api.endpoints import images, gallery, env
+from .core.config import settings
+from .api.endpoints import images, videos, gallery, env
 
 # Configure logging to suppress Azure Blob Storage verbose logs
 logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(
@@ -38,9 +37,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(
     images.router, prefix=f"{settings.API_V1_STR}/images", tags=["images"])
 app.include_router(
+    videos.router, prefix=f"{settings.API_V1_STR}/videos", tags=["videos"])
+app.include_router(
     gallery.router, prefix=f"{settings.API_V1_STR}/gallery", tags=["gallery"])
 app.include_router(env.router, prefix=f"{settings.API_V1_STR}", tags=["env"])
 # app.include_router(organizer.router, prefix=f"{settings.API_V1_STR}/organizer", tags=["organizer"])
+# app.include_router(sora.router, prefix=f"{settings.API_V1_STR}/sora", tags=["sora"])
 
 
 @app.get("/")
@@ -53,18 +55,7 @@ def health_check():
     return {"status": "ok"}
 
 
+# This allows the file to be run directly with `python backend/main.py`
 if __name__ == "__main__":
     import uvicorn
-
-    # Set up command-line argument parsing
-    parser = argparse.ArgumentParser(
-        description="Run the Visionary Lab backend server")
-    parser.add_argument(
-        "--port", type=int, help="Port to run the server on (default: 8000 or PORT env var)")
-    args = parser.parse_args()
-
-    # Use command-line port if specified, otherwise use environment PORT variable,
-    # and finally fall back to default 8000
-    port = args.port if args.port is not None else int(
-        os.environ.get("PORT", 80))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

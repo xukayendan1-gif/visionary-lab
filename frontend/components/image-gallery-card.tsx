@@ -32,9 +32,9 @@ interface ImageMetadata {
     metadata?: {
       prompt?: string;
       description?: string;
-      [key: string]: any;
+      [key: string]: string | number | boolean | undefined;
     };
-    [key: string]: any;
+    [key: string]: string | number | boolean | object | undefined;
   };
   width?: number;
   height?: number;
@@ -60,6 +60,7 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
   const [isMoving, setIsMoving] = useState(false);
   const [folders, setFolders] = useState<string[]>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
+  const [parsedTags, setParsedTags] = useState<string[]>([]);
 
   // Determine image size based on aspect ratio and index
   const determineSize = (width?: number, height?: number, index?: number) => {
@@ -112,7 +113,39 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
     if (image.width && image.height) {
       setAspectRatio(image.width / image.height);
     }
-  }, [image.width, image.height, index]);
+
+    // Parse tags from metadata if they exist
+    const processTags = () => {
+      // First check if image already has tags array
+      if (image.tags && image.tags.length > 0) {
+        setParsedTags(image.tags);
+        return;
+      }
+
+      // Otherwise check metadata
+      if (image.originalItem?.metadata?.tags) {
+        try {
+          const metadataTags = image.originalItem.metadata.tags;
+          if (typeof metadataTags === 'string') {
+            if (metadataTags.startsWith('[') && metadataTags.endsWith(']')) {
+              // Parse JSON array format
+              const tags = JSON.parse(metadataTags);
+              // Clean tags by removing underscores at start and end
+              setParsedTags(tags.map((tag: string) => tag.replace(/^_|_$/g, '')));
+            } else {
+              // Parse comma-separated format
+              setParsedTags(metadataTags.split(',').map(tag => tag.trim().replace(/^_|_$/g, '')));
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to parse tags from metadata:", e);
+          setParsedTags([]);
+        }
+      }
+    };
+
+    processTags();
+  }, [image.width, image.height, index, image.tags, image.originalItem?.metadata?.tags]);
 
   // Handle image load
   const handleImageLoad = () => {
@@ -362,16 +395,16 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
                   <p className="text-xs text-white/90 line-clamp-1 mt-1">{image.description}</p>
                 )}
                 
-                {image.tags && image.tags.length > 0 && (
+                {parsedTags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {image.tags.slice(0, 3).map(tag => (
-                      <Badge key={tag} variant="secondary" className="bg-black/40 text-white text-xs py-0 h-5">
-                        {tag}
+                    {parsedTags.slice(0, 3).map((tag, index) => (
+                      <Badge key={index} variant="secondary" className="bg-black/40 text-white text-xs py-0 h-5">
+                        {String(tag).replace(/"/g, '').replace(/^_|_$/g, '')}
                       </Badge>
                     ))}
-                    {image.tags.length > 3 && (
+                    {parsedTags.length > 3 && (
                       <Badge variant="secondary" className="bg-black/40 text-white text-xs py-0 h-5">
-                        +{image.tags.length - 3}
+                        +{parsedTags.length - 3}
                       </Badge>
                     )}
                   </div>

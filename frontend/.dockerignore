@@ -1,47 +1,37 @@
-# Dependencies
+# Docker ignore file
+# Exclude node modules
 node_modules
-.pnp
-.pnp.js
 
-# Testing
-coverage
-
-# Next.js
+# Exclude Next.js build output
 .next
-out
 
-# Production
-build
-
-# Misc
-.DS_Store
-*.pem
-
-# Debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Local env files
-.env*.local
-.env
-
-# Vercel
-.vercel
-
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Git
+# Exclude development files
 .git
-.gitignore
-
-# Editor directories and files
-.idea
+.github
+*.md
+.eslintrc
+.prettierrc
 .vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+.idea
+*.log
+npm-debug.log*
+
+# Exclude environment files
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Exclude Docker files themselves
+Dockerfile
+.dockerignore
+
+# Exclude test files
+__tests__
+*.test.js
+*.spec.js
+
+# Exclude cache directories
+.npm
+.cache 

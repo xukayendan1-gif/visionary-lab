@@ -1,25 +1,31 @@
 # Visionary Lab
 
-**Create high-quality visual content with the gpt-image-1 model on Azure OpenAI—tailored for professional use cases.**
+**Create high-quality visual content with GPT-Image-1 and Sora on Azure OpenAI—tailored for professional use cases.**
 
 ## Key Features
 
+- Create videos from a text prompt with the Sora model
 - Generate polished image assets from text prompts, input images, or both
 - Refine prompts using AI best practices to ensure high-impact visuals
 - Analyze outputs with AI for quality control, metadata tagging, and asset optimization
+- Provide guardrails for content showing brands products (brand protection)
 - Manage your content in an organized asset library
 
 <img src="ui-sample.png" alt="description" width="800"/>
 
-> Note: You can also use the [notebook](notebooks/gpt-image-1.ipynb) if you want to explore gpt-image-1 using the API.
+> You can also get started with our notebooks to explore the models and APIs:
+>
+> - Image generation: [gpt-image-1.ipynb](notebooks/gpt-image-1.ipynb)
+> - Video generation: [sora-api-starter.ipynb](notebooks/sora-api-starter.ipynb)
 
 ## Prerequisites
 
 Azure resources:
 
-- Azure OpenAI resource with deployed `gpt-image-1` model
+- Azure OpenAI resource with a deployed `gpt-image-1` model
+- Azure OpenAI resource with a deployed `Sora` model
 - Azure OpenAI `gpt-4.1` model deployment (used for prompt enhancements and image analysis)
-- Azure Storage Account with a Blob Container for your images. You can use virtual folders to organize your content.
+- Azure Storage Account with a Blob Container for your images and videos. You can use virtual folders to organize your content.
 
 Compute environment:
 
@@ -70,7 +76,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 ##### 2.2 Copy environment file template
 
 ```bash
-cd backend
 cp .env.example .env
 ```
 
@@ -78,45 +83,29 @@ The environment variables will be defined below.
 
 #### 3. Frontend Setup
 
-##### 3.1 Navigate to the Frontend Directory
-
 ```bash
 cd frontend
-cp .env.example .env
-```
-
-##### 3.2 Install Dependencies
-
-```bash
 npm install --legacy-peer-deps
 ```
 
 ## Step 2: Configure Resources
 
-1. Configure Azure credentials in the backend:
+1. Configure Azure credentials using a code or text editor:
 
    ```bash
-   code backend/.env
+   code .env
    ```
 
    Replace the placeholders with your actual Azure values:
 
-   - `IMAGEGEN_AOAI_RESOURCE`: name of the Azure OpenAI resource used for the gpt-image-1 deployment
-   - `IMAGEGEN_DEPLOYMENT`: deployment name for the gpt-image-1 model
-   - `IMAGEGEN_AOAI_API_KEY`
-   - `LLM_AOAI_RESOURCE`: name of the Azure OpenAI resource used for the GPT-4.1 deployment
-   - `LLM_DEPLOYMENT`: deployment name for the GPT-4.1 model
-   - `LLM_AOAI_API_KEY`
-   - `AZURE_BLOB_SERVICE_URL`
-   - `AZURE_STORAGE_ACCOUNT_NAME`
-   - `AZURE_STORAGE_ACCOUNT_KEY`
-   - `AZURE_BLOB_IMAGE_CONTAINER`
+   | Service / Model   | Variables                                                                                                                                                                                                                                                                                                                                                                      |
+   | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+   | **Sora**          | - `SORA_AOAI_RESOURCE`: name of the Azure OpenAI resource used for Sora <br> - `SORA_DEPLOYMENT`: deployment name for the Sora model <br> - `SORA_AOAI_API_KEY`: API key for the Azure OpenAI Sora resource                                                                                                                                                                    |
+   | **GPT-Image-1**   | - `IMAGEGEN_AOAI_RESOURCE`: name of the Azure OpenAI resource used for gpt-image-1 <br> - `IMAGEGEN_DEPLOYMENT`: deployment name for the gpt-image-1 model <br> - `IMAGEGEN_AOAI_API_KEY`: API key for the gpt-image-1 resource                                                                                                                                                |
+   | **GPT-4.1**       | - `LLM_AOAI_RESOURCE`: name of the Azure OpenAI resource used for GPT-4.1 <br> - `LLM_DEPLOYMENT`: deployment name for the GPT-4.1 model <br> - `LLM_AOAI_API_KEY`: API key for the GPT-4.1 resource                                                                                                                                                                           |
+   | **Azure Storage** | - `AZURE_BLOB_SERVICE_URL`: URL to your Azure Blob Storage service <br> - `AZURE_STORAGE_ACCOUNT_NAME`: name of your Azure Storage Account <br> - `AZURE_STORAGE_ACCOUNT_KEY`: access key for your Azure Storage Account <br> - `AZURE_BLOB_IMAGE_CONTAINER`: name of the Blob Container for images <br> - `AZURE_BLOB_VIDEO_CONTAINER`: name of the Blob Container for videos |
 
-2. Configure your Storage Account in the frontend:
-   ```bash
-   code frontend/.env
-   ```
-   Replace `<storage-account-name>` with your actual Azure storage account name.
+> Note: For the best experience, use both Sora and GPT-Image-1. However, the app also works if you use only one of these models.
 
 ## Step 3: Running the Application
 
@@ -126,7 +115,7 @@ Once everything is set up:
 
    ```bash
    cd backend
-   uv run main.py --port 8000
+   uv run fastapi dev
    ```
 
    The backend server will start on http://localhost:8000. You can verify it's running by visiting http://localhost:8000/api/v1/health in your browser.
@@ -145,9 +134,8 @@ Once everything is set up:
 
    ```bash
    cd frontend
-   npm run dev
+   npm run build
+   npm start
    ```
 
    The frontend will be available at http://localhost:3000.
-
-   In Codespaces, both the backend and frontend will be available via forwarded URLs that GitHub Codespaces provides.

@@ -1,5 +1,5 @@
 [project]
-name = "visionary-lab"
+name = "video-gen"
 version = "0.1.0"
 description = "Create and manage creative content"
 readme = "README.md"

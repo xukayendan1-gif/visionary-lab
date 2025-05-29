@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_PUBLIC_API_PROTOCOL=http
+      - NEXT_PUBLIC_API_HOSTNAME=backend # Can be changed to match your backend service name
+      - NEXT_PUBLIC_API_PORT=8000
+      - NEXT_PUBLIC_STORAGE_ACCOUNT_NAME=devstorageaccountgbb
+    restart: unless-stopped
+    # Add this if you have a backend service in the same docker-compose
+    # depends_on:
+    #   - backend 

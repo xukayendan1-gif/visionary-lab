@@ -21,7 +21,6 @@ interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
-  breadcrumbs,
   className,
   children,
 }: PageHeaderProps) {

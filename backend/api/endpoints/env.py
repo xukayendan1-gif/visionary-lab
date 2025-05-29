@@ -1,46 +1,54 @@
 from fastapi import APIRouter
-from core.config import settings
-from core import dalle_client, llm_client
-import os
-from typing import Dict, List, Any
+from backend.core.config import settings
+from typing import Dict, List
 
 router = APIRouter()
 
 
-@router.get("/env/status", response_model=Dict[str, Any])
+@router.get("/env/status", response_model=Dict[str, List[str]])
 def env_status():
     """
-    Returns the status of various components in the system, focusing on whether 
-    clients are properly initialized rather than specific environment variables.
-    This is more reliable across different platforms.
+    Returns which environment variables are set and which are missing based on the Settings class.
     """
-    # Core functionality status
-    image_generation_ready = dalle_client is not None
-    llm_ready = llm_client is not None
+    # Required variables (must be set for the application to work properly)
+    required_vars = [
+        'SORA_AOAI_RESOURCE',
+        'SORA_AOAI_API_KEY',
+        'SORA_DEPLOYMENT',
+        'LLM_AOAI_RESOURCE',
+        'LLM_DEPLOYMENT',
+        'LLM_AOAI_API_KEY',
+        'IMAGEGEN_AOAI_RESOURCE',
+        'IMAGEGEN_DEPLOYMENT',
+        'IMAGEGEN_AOAI_API_KEY',
+        'AZURE_BLOB_SERVICE_URL',
+        'AZURE_STORAGE_ACCOUNT_NAME',
+        'AZURE_STORAGE_ACCOUNT_KEY',
+        'AZURE_BLOB_IMAGE_CONTAINER',
+        'AZURE_BLOB_VIDEO_CONTAINER',
+    ]
 
-    # Azure storage status
-    storage_ready = all([
-        settings.AZURE_BLOB_SERVICE_URL,
-        settings.AZURE_STORAGE_ACCOUNT_NAME,
-        settings.AZURE_STORAGE_ACCOUNT_KEY
-    ])
+    # Optional variables (app can function without them)
+    optional_vars = [
+    ]
 
-    status = {
-        "services": {
-            "image_generation": image_generation_ready,
-            "llm": llm_ready,
-            "storage": storage_ready
-        },
-        "providers": {
-            "using_azure_openai": settings.MODEL_PROVIDER.lower() == "azure",
-            "using_direct_openai": settings.MODEL_PROVIDER.lower() == "openai"
-        },
-        "summary": {
-            "all_services_ready": image_generation_ready and llm_ready and storage_ready,
-            "image_generation_client": "Initialized" if image_generation_ready else "Not initialized",
-            "llm_client": "Initialized" if llm_ready else "Not initialized",
-            "storage": "Configured" if storage_ready else "Not configured"
-        }
+    set_vars = []
+    missing_vars = []
+
+    # Check required vars using the settings object
+    for var in required_vars:
+        if hasattr(settings, var) and getattr(settings, var) is not None and getattr(settings, var) != "":
+            set_vars.append(var)
+        else:
+            missing_vars.append(var)
+
+    # Check optional vars using the settings object
+    for var in optional_vars:
+        if hasattr(settings, var) and getattr(settings, var) is not None and getattr(settings, var) != "":
+            set_vars.append(var)
+
+    return {
+        "set": set_vars,
+        "missing": missing_vars,
+        "optional_missing": [var for var in optional_vars if var not in set_vars]
     }
-
-    return status

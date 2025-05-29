@@ -6,7 +6,7 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from datetime import datetime
 
-from core.config import settings
+from backend.core.config import settings
 
 
 class AzureBlobStorageService:
@@ -15,6 +15,7 @@ class AzureBlobStorageService:
     def __init__(self):
         """Initialize Azure Blob Storage client"""
         self.image_container = settings.AZURE_BLOB_IMAGE_CONTAINER
+        self.video_container = settings.AZURE_BLOB_VIDEO_CONTAINER
 
         # Create the BlobServiceClient using either connection string or account credentials
         if settings.AZURE_STORAGE_CONNECTION_STRING:
@@ -33,8 +34,9 @@ class AzureBlobStorageService:
                 credential=settings.AZURE_STORAGE_ACCOUNT_KEY
             )
 
-        # Ensure container exists
+        # Ensure containers exist
         self._ensure_container_exists(self.image_container)
+        self._ensure_container_exists(self.video_container)
 
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,
                    limit: int = 100, marker: Optional[str] = None,
@@ -158,43 +160,6 @@ class AzureBlobStorageService:
         except ResourceNotFoundError:
             self.blob_service_client.create_container(container_name)
 
-    def _preprocess_metadata_value(self, value: str) -> str:
-        """
-        Preprocess metadata value to comply with Azure Blob Storage requirements.
-        Removes newlines, tabs, and other invalid characters.
-
-        Args:
-            value: Metadata value to preprocess
-
-        Returns:
-            Processed string compatible with Azure Blob Storage
-        """
-        if value is None:
-            return ""
-
-        # Convert to string if not already
-        str_value = str(value)
-
-        # Replace newlines and tabs with spaces
-        str_value = str_value.replace('\n', ' ').replace(
-            '\r', ' ').replace('\t', ' ')
-
-        # Collapse multiple spaces into a single space
-        import re
-        str_value = re.sub(r'\s+', ' ', str_value)
-
-        # Trim leading/trailing whitespace
-        str_value = str_value.strip()
-
-        # Try to encode as Latin-1 as required by Azure
-        try:
-            str_value.encode('latin-1')
-            return str_value
-        except UnicodeEncodeError:
-            # Replace any non-Latin-1 characters
-            ascii_value = str_value.encode('ascii', 'replace').decode('ascii')
-            return ascii_value
-
     def normalize_folder_path(self, folder_path: Optional[str] = None) -> str:
         """
         Normalize a folder path to ensure consistent format
@@ -220,8 +185,60 @@ class AzureBlobStorageService:
             folder_path = f"{folder_path}/"
 
         return folder_path
-    
-    
+
+    def _preprocess_metadata_value(self, value: str) -> str:
+        """
+        Preprocess metadata value to comply with Azure Blob Storage requirements.
+        Azure requires metadata keys and values to contain only US-ASCII characters.
+
+        Args:
+            value: Metadata value to preprocess
+
+        Returns:
+            Processed string compatible with Azure Blob Storage
+        """
+        if value is None:
+            return ""
+
+        # Convert to string if not already
+        str_value = str(value)
+
+        # Replace newlines and tabs with spaces
+        str_value = str_value.replace('\n', ' ').replace(
+            '\r', ' ').replace('\t', ' ')
+
+        # Collapse multiple spaces into a single space
+        import re
+        str_value = re.sub(r'\s+', ' ', str_value)
+
+        # Replace all non-ASCII characters and potential problematic characters
+        # Azure metadata must be valid HTTP headers (US-ASCII characters only)
+        sanitized_value = ""
+        for char in str_value:
+            # Only keep ASCII printable characters (32-126)
+            if 32 <= ord(char) <= 126:
+                # Avoid characters that could cause issues in HTTP headers
+                if char not in '<>{}[]?#%':
+                    sanitized_value += char
+                else:
+                    sanitized_value += '_'
+            else:
+                sanitized_value += '_'
+
+        # Trim leading/trailing whitespace and ensure not empty
+        sanitized_value = sanitized_value.strip()
+        if not sanitized_value:
+            return "_"
+
+        # Final check - only ASCII allowed
+        try:
+            sanitized_value.encode('ascii')
+        except UnicodeEncodeError:
+            # Fallback if somehow still not ASCII
+            sanitized_value = sanitized_value.encode(
+                'ascii', 'replace').decode('ascii')
+
+        return sanitized_value
 
     async def upload_asset(self, file: UploadFile, asset_type: str = "image",
                            metadata: Optional[Dict[str, str]] = None,
@@ -239,8 +256,8 @@ class AzureBlobStorageService:
             Dictionary with asset information
         """
         try:
-            # Always use image container
-            container_name = self.image_container
+            # Determine container based on asset type
+            container_name = self.image_container if asset_type == "image" else self.video_container
 
             # Generate a unique ID for the file
             file_id = str(uuid.uuid4())
@@ -358,22 +375,9 @@ class AzureBlobStorageService:
                 if v is None:
                     continue
 
-                # Ensure value is string
-                str_value = str(v)
-
-                # Convert to ASCII-safe string if needed
-                try:
-                    # Test if it can be encoded as Latin-1 (required by Azure)
-                    str_value.encode('latin-1')
-                    # If successful, use the original string
-                    metadata_str[k] = str_value
-                except UnicodeEncodeError:
-                    # If it fails, replace problematic characters
-                    ascii_value = str_value.encode(
-                        'ascii', 'replace').decode('ascii')
-                    metadata_str[k] = ascii_value
-                    print(
-                        f"Converted Unicode metadata for key '{k}': '{str_value}' -> '{ascii_value}'")
+                # Process the value to make it Azure-compatible
+                processed_value = self._preprocess_metadata_value(v)
+                metadata_str[k] = processed_value
 
             # Set metadata (replaces all existing metadata)
             blob_client.set_blob_metadata(metadata=metadata_str)

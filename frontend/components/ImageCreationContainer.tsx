@@ -4,11 +4,85 @@ import { useState, useEffect } from "react";
 import { ImageOverlay } from "./ImageOverlay";
 import { toast } from "sonner";
 import { cn } from "@/utils/utils";
-import { generateImages, saveGeneratedImages, analyzeImage, analyzeImageFromBase64, updateAssetMetadata, MediaType, fetchFolders, editImage } from "@/services/api";
+import { 
+  generateImages, 
+  saveGeneratedImages, 
+  analyzeImageFromBase64, 
+  updateAssetMetadata, 
+  MediaType, 
+  fetchFolders, 
+  editImage,
+  protectImagePrompt 
+} from "@/services/api";
 
 interface ImageCreationContainerProps {
   className?: string;
   onImagesSaved?: (count?: number) => void;
+}
+
+interface ImageGenerationSettings {
+  prompt: string;
+  imageSize: string;
+  saveImages: boolean;
+  mode: string;
+  brandsProtection: string;
+  brandProtectionModel: string;
+  variations: number;
+  folder: string;
+  background: string;
+  outputFormat: string;
+  quality: string;
+  sourceImages?: File[];
+  brandsList?: string[];
+}
+
+interface ImageData {
+  b64_json?: string;
+  url?: string;
+}
+
+interface AnalysisResult {
+  description: string;
+  products: string;
+  tags: string[];
+  feedback: string;
+}
+
+interface ImageAnalysis {
+  index: number;
+  analysis?: AnalysisResult;
+  error?: string;
+}
+
+interface BrandProtection {
+  originalPrompt: string;
+  protectedPrompt: string;
+  mode: string;
+  brands: string[];
+}
+
+interface GenerationResponse {
+  imgen_model_response?: {
+    data: ImageData[];
+    [key: string]: unknown;
+  };
+  brandProtection?: BrandProtection;
+  metadata?: Record<string, string>;
+  analysisResults?: ImageAnalysis[];
+  [key: string]: unknown;
+}
+
+interface SavedImage {
+  url: string;
+  blob_name: string;
+  metadata: Record<string, string>;
+}
+
+// Used in type definitions
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface SaveResponse {
+  total_saved: number;
+  saved_images: SavedImage[];
 }
 
 export function ImageCreationContainer({ className = "", onImagesSaved }: ImageCreationContainerProps) {
@@ -16,10 +90,12 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
-  const [generationResponse, setGenerationResponse] = useState<any>(null);
+  // This state is updated but not directly used in JSX - it's used in handleSaveImages
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [generationResponseData, setGenerationResponseData] = useState<GenerationResponse | null>(null);
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>("root");
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<ImageGenerationSettings>({
     prompt: "",
     imageSize: "1024x1024",
     saveImages: true,
@@ -32,6 +108,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
     outputFormat: "png",
     quality: "auto",
     sourceImages: [] as File[],
+    brandsList: [] as string[],
   });
 
   // Fetch available folders when component mounts
@@ -48,39 +125,71 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
     loadFolders();
   }, []);
 
-  const handleGenerate = async (newSettings: {
-    prompt: string;
-    imageSize: string;
-    saveImages: boolean;
-    mode: string;
-    brandsProtection: string;
-    brandProtectionModel: string;
-    variations: number;
-    folder: string;
-    background: string;
-    outputFormat: string;
-    quality: string;
-    sourceImages?: File[];
-  }) => {
+  const handleGenerate = async (newSettings: ImageGenerationSettings) => {
     try {
       setIsGenerating(true);
-      setSettings({ ...newSettings, sourceImages: newSettings.sourceImages || [] });
+      setSettings({ 
+        ...newSettings, 
+        sourceImages: newSettings.sourceImages || [],
+        brandsList: newSettings.brandsList || []
+      });
       setSelectedFolder(newSettings.folder);
       
-      let successfulAnalysis: any[] | undefined = undefined; // Declare outside the if block
+      // Store the original prompt
+      const originalPrompt = newSettings.prompt;
+      
+      // Apply brand protection if enabled
+      let generationPrompt = originalPrompt;
+      if (newSettings.brandsProtection !== "off" && newSettings.brandsList && newSettings.brandsList.length > 0) {
+        toast.info("Brand protection activated", {
+          description: `Applying ${newSettings.brandsProtection} protection for ${newSettings.brandsList.length} brand${newSettings.brandsList.length > 1 ? 's' : ''}...`
+        });
+        
+        try {
+          // Call the brand protection API
+          generationPrompt = await protectImagePrompt(
+            originalPrompt,
+            newSettings.brandsList,
+            newSettings.brandsProtection
+          );
+          
+          // Log the difference if in debug mode
+          if (generationPrompt !== originalPrompt) {
+            console.log("Original prompt:", originalPrompt);
+            console.log("Protected prompt:", generationPrompt);
+            
+            toast.success("Brand protection applied", {
+              description: "The prompt has been modified for brand safety"
+            });
+          } else {
+            toast.info("Brand protection processed", {
+              description: "No changes were needed to protect the specified brands"
+            });
+          }
+        } catch (error) {
+          console.error('Error applying brand protection:', error);
+          toast.error("Brand protection failed", {
+            description: "Using original prompt instead"
+          });
+          // Fallback to original prompt on error
+          generationPrompt = originalPrompt;
+        }
+      }
+      
+      let successfulAnalysis: ImageAnalysis[] | undefined = undefined; // Declare outside the if block
       let response;
       
       // If source images are provided, use the edit endpoint
       if (newSettings.sourceImages && newSettings.sourceImages.length > 0) {
         // Show toast for image editing
         toast.info("Image editing started", {
-          description: `Editing ${newSettings.sourceImages.length} image${newSettings.sourceImages.length > 1 ? 's' : ''} with prompt: "${newSettings.prompt.substring(0, 50)}${newSettings.prompt.length > 50 ? '...' : ''}"`,
+          description: `Editing ${newSettings.sourceImages.length} image${newSettings.sourceImages.length > 1 ? 's' : ''} with prompt: "${originalPrompt.substring(0, 50)}${originalPrompt.length > 50 ? '...' : ''}"`,
         });
         
-        // Call the image edit API
+        // Call the image edit API with the protected prompt
         response = await editImage(
           newSettings.sourceImages,
-          newSettings.prompt,
+          generationPrompt, // Use protected prompt for generation
           newSettings.variations, // Number of variations from dropdown
           newSettings.imageSize, // Use selected size
           newSettings.quality // Quality parameter
@@ -92,12 +201,12 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
       } else {
         // Show toast for image generation
         toast.info("Image generation started", {
-          description: `Generating image with prompt: "${newSettings.prompt.substring(0, 50)}${newSettings.prompt.length > 50 ? '...' : ''}"`,
+          description: `Generating image with prompt: "${originalPrompt.substring(0, 50)}${originalPrompt.length > 50 ? '...' : ''}"`,
         });
         
-        // Call the image generation API
+        // Call the image generation API with the protected prompt
         response = await generateImages(
-          newSettings.prompt,
+          generationPrompt, // Use protected prompt for generation
           newSettings.variations, // Number of variations from dropdown
           newSettings.imageSize, // Use selected size
           "b64_json", // Fixed response format for now
@@ -111,13 +220,21 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         });
       }
       
-      setGenerationResponse(response);
+      // Store the brand protection info in the response for later use when saving
+      response.brandProtection = {
+        originalPrompt,
+        protectedPrompt: generationPrompt,
+        mode: newSettings.brandsProtection,
+        brands: newSettings.brandsList
+      };
+      
+      setGenerationResponseData(response);
       
       // If AI analysis is enabled, we can analyze before saving
       if (newSettings.saveImages && newSettings.brandProtectionModel === "GPT-4o") {
         // Check if we have base64 image data available (from generation)
         const hasBase64Images = response?.imgen_model_response?.data?.some(
-          (item: any) => item.b64_json
+          (item: ImageData) => item.b64_json
         );
         
         if (hasBase64Images) {
@@ -127,7 +244,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
           
           // Process each image and collect analysis results
           const analysisPromises = response.imgen_model_response.data.map(
-            async (imageData: any, idx: number) => {
+            async (imageData: ImageData, idx: number) => {
               if (imageData.b64_json) {
                 try {
                   const result = await analyzeImageFromBase64(imageData.b64_json);
@@ -157,8 +274,8 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
             });
             
             // Store analysis results to use when saving
-            setGenerationResponse((prev: any) => ({
-              ...prev,
+            setGenerationResponseData((prev: GenerationResponse | null) => ({
+              ...(prev || {}),
               analysisResults: successfulAnalysis
             }));
           }
@@ -169,7 +286,7 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
       if (newSettings.saveImages) {
         await handleSaveImages(
           response, 
-          newSettings.prompt, 
+          response.brandProtection?.originalPrompt || originalPrompt, // Use original prompt (not protected) for saving metadata
           newSettings.brandProtectionModel === "GPT-4o", // Simplified shouldAnalyze flag
           newSettings.folder === "root" ? "" : newSettings.folder,
           newSettings.outputFormat,
@@ -191,14 +308,15 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
   };
   
   const handleSaveImages = async (
-    generationResponse: any, 
+    generationResponse: GenerationResponse, 
     prompt: string, 
-    shouldAnalyze: boolean = false, 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _shouldAnalyze: boolean = false, 
     folder: string = "",
     outputFormat: string = "png",
     background: string = "auto",
     imageSize: string,
-    preAnalysisResults?: any[] // Add new parameter for pre-analysis results
+    preAnalysisResults?: ImageAnalysis[] 
   ) => {
     try {
       setIsUploading(true);
@@ -208,10 +326,33 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         description: `Saving generated images${folder ? ' to ' + folder : ' to root folder'}...`
       });
       
+      // Add brand protection metadata if available
+      const hasBrandProtection = generationResponse?.brandProtection && 
+                                generationResponse.brandProtection.mode !== "off" &&
+                                generationResponse.brandProtection.brands && 
+                                generationResponse.brandProtection.brands.length > 0;
+      
+      // Create a copy of generationResponse with additional metadata
+      const enhancedResponse = { ...generationResponse };
+      
+      // Add brand protection metadata to the response before saving
+      if (hasBrandProtection) {
+        try {
+          enhancedResponse.metadata = {
+            ...(enhancedResponse.metadata || {}),
+            brand_protection_mode: generationResponse.brandProtection.mode,
+            protected_brands: generationResponse.brandProtection.brands.join(', '),
+            protected_prompt: generationResponse.brandProtection.protectedPrompt
+          };
+        } catch (error) {
+          console.error("Error adding brand protection metadata:", error);
+        }
+      }
+      
       // Call the save images API
       const saveResponse = await saveGeneratedImages(
-        generationResponse,
-        prompt,
+        enhancedResponse, // Use enhanced response with metadata
+        generationResponse?.brandProtection?.originalPrompt || prompt, // Use original prompt (not protected) for saving metadata
         true, // Save all generated images
         folder, // Folder path
         outputFormat, // Output format
@@ -237,14 +378,13 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         });
         
         let successCount = 0;
-        let failureCount = 0;
         
         // For each saved image, find its corresponding analysis result and apply
         for (let i = 0; i < saveResponse.saved_images.length; i++) {
           const savedImage = saveResponse.saved_images[i];
           // Find corresponding analysis result based on index
           const analysisResult = preAnalysisResults.find(
-            (r: any) => r.index === i
+            (r: ImageAnalysis) => r.index === i
           );
           
           if (analysisResult && analysisResult.analysis) {
@@ -258,12 +398,23 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
                 feedback: analysisResult.analysis.feedback
               };
               
+              // Add brand protection info to metadata if available
+              if (hasBrandProtection && generationResponse.brandProtection) {
+                try {
+                  enhancedMetadata.brand_protection_mode = generationResponse.brandProtection.mode;
+                  enhancedMetadata.protected_brands = generationResponse.brandProtection.brands.join(', ');
+                  enhancedMetadata.protected_prompt = generationResponse.brandProtection.protectedPrompt;
+                } catch (error) {
+                  console.error("Error adding brand protection to image metadata:", error);
+                }
+              }
+              
               // Update the blob metadata
               await updateAssetMetadata(savedImage.blob_name, MediaType.IMAGE, enhancedMetadata);
               successCount++;
             } catch (error) {
               console.error(`Failed to update metadata for image ${savedImage.blob_name}:`, error);
-              failureCount++;
+              // Log error but don't track failure count
             }
           }
         }
@@ -271,57 +422,6 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         if (successCount > 0) {
           toast.success(`AI analysis applied`, {
             description: `Successfully updated metadata for ${successCount} of ${saveResponse.saved_images.length} images`
-          });
-        }
-        
-        setIsAnalyzing(false);
-      }
-      // Only run post-save analysis if pre-analysis was not done AND shouldAnalyze is true
-      else if (!preAnalysisResults && shouldAnalyze && saveResponse.saved_images && saveResponse.saved_images.length > 0) {
-        setIsAnalyzing(true);
-        
-        toast.info("AI analysis started", {
-          description: "Analyzing generated images..."
-        });
-        
-        let successCount = 0;
-        let failureCount = 0;
-        
-        // Process each saved image
-        for (const image of saveResponse.saved_images) {
-          try {
-            // Analyze the image
-            const analysisResult = await analyzeImage(image.url);
-            
-            // Prepare metadata with analysis results
-            const enhancedMetadata = {
-              ...image.metadata,
-              description: analysisResult.description,
-              products: analysisResult.products,
-              tags: JSON.stringify(analysisResult.tags),
-              feedback: analysisResult.feedback
-            };
-            
-            // Update the blob metadata
-            await updateAssetMetadata(image.blob_name, MediaType.IMAGE, enhancedMetadata);
-            
-            successCount++;
-          } catch (error) {
-            console.error(`Failed to analyze or update metadata for image ${image.blob_name}:`, error);
-            failureCount++;
-          }
-        }
-        
-        // Show summary toast
-        if (successCount > 0) {
-          toast.success(`AI analysis completed`, {
-            description: `Successfully analyzed ${successCount} of ${saveResponse.saved_images.length} images`
-          });
-        }
-        
-        if (failureCount > 0) {
-          toast.error(`Some analyses failed`, {
-            description: `Failed to analyze ${failureCount} of ${saveResponse.saved_images.length} images`
           });
         }
         

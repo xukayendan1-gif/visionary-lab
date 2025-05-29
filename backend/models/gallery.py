@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 
-from models.common import BaseResponse
+from backend.models.common import BaseResponse
 
 
 class MediaType(str, Enum):
@@ -98,6 +98,8 @@ class SasTokenResponse(BaseModel):
     """Response model for SAS token generation endpoint"""
     success: bool
     message: str
+    video_sas_token: str
     image_sas_token: str
+    video_container_url: str
     image_container_url: str
     expiry: datetime

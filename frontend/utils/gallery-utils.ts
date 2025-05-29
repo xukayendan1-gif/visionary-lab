@@ -1,11 +1,24 @@
-import { GalleryItem, MediaType, fetchGalleryImages } from "@/services/api";
+import { fetchGalleryVideos, GalleryItem, MediaType, fetchGalleryImages } from "@/services/api";
 import { API_BASE_URL } from "@/services/api";
 import { sasTokenService } from "@/services/sas-token";
 
+export interface VideoMetadata {
+  src: string;
+  title: string;
+  description?: string;
+  size: "small" | "medium" | "large";
+  id: string;
+  name: string;
+  tags?: string[];
+  originalItem: GalleryItem;
+  width?: number;
+  height?: number;
+}
+
 /**
- * Convert GalleryItem to ImageMetadata
+ * Convert GalleryItem to VideoMetadata
  */
-async function mapGalleryItemToImageMetadata(item: GalleryItem, index: number): Promise<ImageMetadata> {
+async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMetadata> {
   // Extract title from metadata or name
   const title = item.metadata?.title || item.name.split('.')[0].replace(/_/g, ' ');
   
@@ -24,12 +37,110 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem, index: number): 
     src = `${API_BASE_URL}/gallery/asset/${item.media_type}/${item.name}`;
   }
   
-  // Extract dimensions if available
+  return {
+    id: item.id,
+    name: item.name,
+    src,
+    title: title.charAt(0).toUpperCase() + title.slice(1), // Capitalize first letter
+    description: description,
+    // We'll assign the size later in a structured way
+    size: "medium", // Default size, will be overridden
+    originalItem: item,
+  };
+}
+
+/**
+ * Assign sizes to videos in a structured pattern to create a visually interesting grid
+ */
+function assignVideoSizes(videos: VideoMetadata[]): VideoMetadata[] {
+  return videos.map((video, index) => {
+    // Create a structured pattern of sizes
+    // Every 5th video is large, every 3rd is small, the rest are medium
+    let size: "small" | "medium" | "large" = "medium";
+    
+    if (index % 5 === 0) {
+      size = "large";
+    } else if (index % 3 === 0) {
+      size = "small";
+    }
+    
+    return {
+      ...video,
+      size
+    };
+  });
+}
+
+/**
+ * Fetch videos from the gallery API
+ */
+export async function fetchVideos(
+  limit: number = 50, 
+  offset: number = 0,
+  folderPath?: string
+): Promise<VideoMetadata[]> {
+  try {
+    // Try to fetch videos from the API
+    const response = await fetchGalleryVideos(limit, offset, undefined, undefined, folderPath);
+    
+    if (response.success && response.items.length > 0) {
+      // Map items to metadata with Promise.all to handle async mapping
+      const videoItemPromises = response.items
+        .filter(item => item.media_type === MediaType.VIDEO)
+        .map((item) => mapGalleryItemToVideoMetadata(item));
+      
+      const videoItems = await Promise.all(videoItemPromises);
+      
+      // Assign sizes in a structured way
+      return assignVideoSizes(videoItems);
+    } else {
+      console.warn("No videos found in gallery API");
+      return []; // Return empty array instead of mock videos
+    }
+  } catch (error) {
+    console.error("Error fetching videos from gallery API:", error);
+    return []; // Return empty array instead of mock videos
+  }
+}
+
+/**
+ * Convert GalleryItem to ImageMetadata
+ */
+async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMetadata> {
+  // Extract title from metadata or name
+  const title = item.metadata?.title || item.name.split('.')[0].replace(/_/g, ' ');
+  
+  // Extract description from metadata
+  const description = item.metadata?.description || '';
+  
+  let src: string;
+  
+  // Extract just the filename without folder path
+  const filename = item.name.split('/').pop() || item.name;
+  
+  try {
+    // Try to get a direct URL with SAS token for better performance
+    src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
+    console.log(`Using direct blob URL for ${item.name}`);
+  } catch (error) {
+    console.warn("Failed to get SAS token URL for image, falling back to proxy:", error);
+  
+    // Fallback to proxy URL
+    if (item.folder_path) {
+      // If we have a folder path, construct the full path with folder
+      const folderSegments = item.folder_path.replace(/^\/|\/$/g, '').split('/');
+      const segments = [...folderSegments, filename];
+      // For catch-all route, use separate segments
+      src = `/api/image/${segments.join('/')}`;
+    } else {
+      // Without folder, use just the filename
+      src = `/api/image/${filename}`;
+    }
+  }
+  
+  // Extract width and height from metadata if available
   let width: number | undefined;
   let height: number | undefined;
-  
-  // Try to extract dimensions from metadata
-  const filename = item.name;
   
   // Try to extract dimensions from multiple potential metadata fields
   if (item.metadata?.width && !isNaN(Number(item.metadata.width))) {
@@ -53,6 +164,12 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem, index: number): 
     const parts = item.metadata.size.split('x');
     if (parts.length === 2 && !isNaN(Number(parts[0])) && !isNaN(Number(parts[1]))) {
       width = Number(parts[0]);
+    }
+  }
+  
+  if (!height && item.metadata?.size && /\d+x\d+/i.test(item.metadata.size)) {
+    const parts = item.metadata.size.split('x');
+    if (parts.length === 2 && !isNaN(Number(parts[1]))) {
       height = Number(parts[1]);
     }
   }
@@ -104,7 +221,7 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem, index: number): 
 /**
  * Interface for image metadata
  */
-interface ImageMetadata {
+export interface ImageMetadata {
   src: string;
   title: string;
   description?: string;
@@ -157,29 +274,14 @@ export async function fetchImages(
   folderPath?: string
 ): Promise<ImageMetadata[]> {
   try {
-    // Set up optional folder path query parameter
-    let folderQuery = "";
-    if (folderPath) {
-      folderQuery = `&prefix=${encodeURIComponent(folderPath)}`;
-    }
-    
     // Try to fetch images from the API
-    const response = await fetchGalleryImages(limit, offset, undefined, folderPath);
+    const response = await fetchGalleryImages(limit, offset, undefined, undefined, folderPath);
     
     if (response.success && response.items.length > 0) {
-      // Sort images by creation time (newest first)
-      const sortedItems = [...response.items]
-        .filter(item => item.media_type === MediaType.IMAGE)
-        .sort((a, b) => {
-          // Parse dates and compare them (newest first)
-          const dateA = new Date(a.creation_time).getTime();
-          const dateB = new Date(b.creation_time).getTime();
-          return dateB - dateA;
-        });
-      
       // Map items to metadata with Promise.all to handle async mapping
-      const imageItemPromises = sortedItems
-        .map((item, index) => mapGalleryItemToImageMetadata(item, index));
+      const imageItemPromises = response.items
+        .filter(item => item.media_type === MediaType.IMAGE)
+        .map(item => mapGalleryItemToImageMetadata(item));
       
       const imageItems = await Promise.all(imageItemPromises);
       
@@ -195,4 +297,4 @@ export async function fetchImages(
     // Return empty array instead of mock images
     return [];
   }
-}
+} 

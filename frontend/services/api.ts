@@ -2,39 +2,73 @@
  * API service for interacting with the backend API
  */
 
-// Build API base URL from environment variables
-// These variables are set in next.config.ts and available at runtime
-const getApiBaseUrl = () => {
-  const protocol = process.env.API_PROTOCOL || 'http';
-  const hostname = process.env.API_HOSTNAME || 'localhost';
-  const port = process.env.API_PORT || '8000';
-  
-  // Only include port in the URL if it's non-standard
-  // Standard ports: 80 for HTTP, 443 for HTTPS
-  let includePort = true;
-  if ((protocol === 'http' && port === '80') || (protocol === 'https' && port === '443')) {
-    includePort = false;
-  }
-  
-  // Build the API base URL
-  const baseUrl = `${protocol}://${hostname}${includePort && port ? `:${port}` : ''}/api/v1`;
-  
-  // Log the constructed URL for debugging
-  console.log('API Base URL:', baseUrl);
-  console.log('Environment variables:', { 
-    API_PROTOCOL: process.env.API_PROTOCOL,
-    API_HOSTNAME: process.env.API_HOSTNAME,
-    API_PORT: process.env.API_PORT,
-    includePort: includePort
-  });
-  
-  return baseUrl;
-};
+// API base URL configuration with GitHub Codespaces detection
+const API_PROTOCOL = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
+const API_HOSTNAME = process.env.NEXT_PUBLIC_API_HOSTNAME || 'localhost';
+// For GitHub Codespaces, port is part of the hostname, so this might be empty
+const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
 
-export const API_BASE_URL = getApiBaseUrl();
+// First build temporary base URL with conditional port inclusion
+let API_BASE_URL = API_PORT 
+  ? `${API_PROTOCOL}://${API_HOSTNAME}:${API_PORT}/api/v1` 
+  : `${API_PROTOCOL}://${API_HOSTNAME}/api/v1`;
+
+// Override with direct API URL if provided
+if (process.env.NEXT_PUBLIC_API_URL) {
+  console.log(`Overriding API URL with NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`);
+  // Ensure API URL ends with /api/v1
+  API_BASE_URL = process.env.NEXT_PUBLIC_API_URL.endsWith('/api/v1') 
+    ? process.env.NEXT_PUBLIC_API_URL 
+    : `${process.env.NEXT_PUBLIC_API_URL}/api/v1`;
+}
+
+// Export the final configured URL
+export { API_BASE_URL };
+
+// Log the configured API URL at startup to help debug connection issues
+console.log(`API configured with: ${API_BASE_URL}`);
+console.log('API environment variables:');
+console.log(`- NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL || 'not set'}`);
+console.log(`- NEXT_PUBLIC_API_PROTOCOL: ${process.env.NEXT_PUBLIC_API_PROTOCOL || 'not set'}`);
+console.log(`- NEXT_PUBLIC_API_HOSTNAME: ${process.env.NEXT_PUBLIC_API_HOSTNAME || 'not set'}`);
+console.log(`- NEXT_PUBLIC_API_PORT: ${process.env.NEXT_PUBLIC_API_PORT || 'not set'}`);
 
 // Enable debug mode to log API requests
-const DEBUG = true;
+const DEBUG = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true' || true;
+
+// Types for API requests and responses
+export interface VideoGenerationRequest {
+  prompt: string;
+  n_variants: number;
+  n_seconds: number;
+  height: number;
+  width: number;
+  metadata?: Record<string, string>;
+}
+
+export interface VideoGenerationJob {
+  id: string;
+  status: string;
+  prompt: string;
+  n_variants: number;
+  n_seconds: number;
+  height: number;
+  width: number;
+  metadata?: Record<string, string>;
+  generations?: Array<{
+    id: string;
+    job_id: string;
+    created_at: number;
+    width: number;
+    height: number;
+    n_seconds: number;
+    prompt: string;
+    url: string;
+  }>;
+  created_at?: number;
+  finished_at?: number;
+  failure_reason?: string;
+}
 
 // Gallery types
 export enum MediaType {
@@ -79,19 +113,239 @@ export interface GalleryUploadResponse {
 }
 
 /**
+ * Interface for video/image metadata
+ */
+export interface AssetMetadata {
+  [key: string]: string | number | boolean | string[] | undefined;
+}
+
+/**
+ * Interface for image generation response
+ */
+export interface ImageGenerationResponse {
+  created: number;
+  data: Array<{
+    url?: string;
+    b64_json?: string;
+    revised_prompt?: string;
+  }>;
+}
+
+/**
+ * Interface for image save response
+ */
+export interface ImageSaveResponse {
+  success: boolean;
+  message: string;
+  saved_images: Array<{
+    blob_name: string;
+    url: string;
+    original_index: number;
+  }>;
+}
+
+/**
+ * Interface for metadata update response
+ */
+export interface MetadataUpdateResponse {
+  success: boolean;
+  message: string;
+  updated: boolean;
+}
+
+/**
+ * Interface for folder hierarchy
+ */
+export interface FolderHierarchy {
+  [folderName: string]: {
+    path: string;
+    children: FolderHierarchy;
+  };
+}
+
+/**
+ * Interface for image edit response
+ */
+export interface ImageEditResponse {
+  created: number;
+  data: Array<{
+    url?: string;
+    b64_json?: string;
+    revised_prompt?: string;
+  }>;
+}
+
+/**
+ * Create a new video generation job
+ */
+export async function createVideoGenerationJob(request: VideoGenerationRequest): Promise<VideoGenerationJob> {
+  const url = `${API_BASE_URL}/videos/jobs`;
+  
+  if (DEBUG) {
+    console.log(`Creating video generation job with prompt: ${request.prompt}`);
+    console.log(`POST ${url}`);
+    console.log('Request:', request);
+  }
+
+  // Include metadata if present
+  const requestBody = {
+    ...request,
+    metadata: request.metadata || undefined
+  };
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (DEBUG) {
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to create video generation job: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  
+  if (DEBUG) {
+    console.log('Response data:', data);
+  }
+  
+  return data;
+}
+
+/**
+ * Get the status of a video generation job
+ */
+export async function getVideoGenerationJob(jobId: string): Promise<VideoGenerationJob> {
+  const url = `${API_BASE_URL}/videos/jobs/${jobId}`;
+  
+  if (DEBUG) {
+    console.log(`Fetching job status for job ${jobId}`);
+    console.log(`GET ${url}`);
+  }
+  
+  try {
+    const response = await fetch(url);
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to get video generation job: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (DEBUG) {
+      console.log('Response data:', data);
+    }
+    
+    return data;
+  } catch (error) {
+    // Add better error logging and handling for connection issues
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Log the error but with a more descriptive message 
+    console.error(`Network error when fetching job ${jobId}: ${errorMessage}`);
+    
+    // Re-throw the error for the caller to handle
+    throw error;
+  }
+}
+
+/**
+ * Get the download URL for a video generation
+ */
+export function getVideoDownloadUrl(generationId: string, fileName: string): string {
+  const url = `${API_BASE_URL}/videos/generations/${generationId}/content?file_name=${encodeURIComponent(fileName)}`;
+  
+  if (DEBUG) {
+    console.log(`Video download URL: ${url}`);
+  }
+  
+  return url;
+}
+
+/**
+ * Get the download URL for a GIF generation
+ */
+export function getGifDownloadUrl(generationId: string, fileName: string): string {
+  const url = `${API_BASE_URL}/videos/generations/${generationId}/content?file_name=${encodeURIComponent(fileName)}&as_gif=true`;
+  
+  if (DEBUG) {
+    console.log(`GIF download URL: ${url}`);
+  }
+  
+  return url;
+}
+
+/**
+ * Download a video generation and return a local URL
+ */
+export async function downloadVideoGeneration(generationId: string, fileName: string): Promise<string> {
+  const url = getVideoDownloadUrl(generationId, fileName);
+  
+  if (DEBUG) {
+    console.log(`Downloading video generation ${generationId}`);
+    console.log(`GET ${url}`);
+  }
+  
+  const response = await fetch(url);
+
+  if (DEBUG) {
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
+  }
+
+  // Create a blob URL for the video
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  
+  if (DEBUG) {
+    console.log(`Created blob URL: ${blobUrl}`);
+  }
+  
+  return blobUrl;
+}
+
+/**
  * Upload a video to the gallery
  */
 export async function uploadVideoToGallery(
   videoBlob: Blob, 
   fileName: string, 
-  metadata: Record<string, any>
+  metadata: AssetMetadata,
+  folder?: string,
+  uniqueId?: string
 ): Promise<GalleryUploadResponse> {
   const url = `${API_BASE_URL}/gallery/upload`;
+  const logId = uniqueId || `upload-${Date.now().toString().substring(6)}`;
   
   if (DEBUG) {
-    console.log(`Uploading video to gallery: ${fileName}`);
-    console.log(`POST ${url}`);
-    console.log('Metadata:', metadata);
+    console.log(`[${logId}] Uploading video to gallery: ${fileName} (${videoBlob.size} bytes)`);
+    console.log(`[${logId}] POST ${url}`);
+    console.log(`[${logId}] Metadata:`, metadata);
+    if (folder) {
+      console.log(`[${logId}] Target folder: ${folder}`);
+    }
   }
 
   // Create form data for the upload
@@ -104,10 +358,189 @@ export async function uploadVideoToGallery(
     formData.append('metadata', JSON.stringify(metadata));
   }
   
-  const response = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  });
+  // Add folder path if specified
+  if (folder && folder !== 'root') {
+    formData.append('folder_path', folder);
+  }
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (DEBUG) {
+      console.log(`[${logId}] Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Could not read error response');
+        console.error(`[${logId}] Upload failed: ${errorText}`);
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload video to gallery: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (DEBUG) {
+      console.log(`[${logId}] Upload successful. Response data:`, data);
+    }
+    
+    return data;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[${logId}] Error uploading video: ${errorMessage}`);
+    throw error;
+  }
+}
+
+/**
+ * Separate two-step process: First download the video, then upload it to the gallery
+ * This addresses the issue with the combined endpoint by separating concerns
+ */
+export async function downloadThenUploadToGallery(
+  generationId: string, 
+  fileName: string, 
+  metadata: AssetMetadata,
+  folder?: string
+): Promise<{blobUrl: string, uploadResponse: GalleryUploadResponse}> {
+  const uniqueId = `upload-${generationId}-${Date.now().toString().substring(6)}`;
+  
+  if (DEBUG) {
+    console.log(`[${uniqueId}] Two-step download and upload for generation ${generationId}`);
+    if (folder) {
+      console.log(`[${uniqueId}] Target folder: ${folder}`);
+    }
+    console.log(`[${uniqueId}] Metadata:`, metadata);
+  }
+  
+  // Step 1: Download the video
+  const downloadUrl = getVideoDownloadUrl(generationId, fileName);
+  
+  if (DEBUG) {
+    console.log(`[${uniqueId}] Step 1: Downloading video - GET ${downloadUrl}`);
+  }
+  
+  try {
+    const response = await fetch(downloadUrl);
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Could not read error response');
+      console.error(`[${uniqueId}] Download failed with status ${response.status}: ${errorText}`);
+      throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
+    }
+
+    // Get the video blob
+    const blob = await response.blob();
+    
+    // Create a blob URL for display
+    const blobUrl = URL.createObjectURL(blob);
+    
+    if (DEBUG) {
+      console.log(`[${uniqueId}] Successfully downloaded ${blob.size} bytes`);
+      console.log(`[${uniqueId}] Created blob URL: ${blobUrl}`);
+      console.log(`[${uniqueId}] Step 2: Uploading to gallery`);
+    }
+    
+    // Step 2: Upload to gallery using the updated uploadVideoToGallery function
+    const uploadResponse = await uploadVideoToGallery(blob, fileName, metadata, folder, uniqueId);
+    
+    if (DEBUG) {
+      console.log(`[${uniqueId}] Upload successful. Blob name: ${uploadResponse.blob_name}`);
+    }
+    
+    return { blobUrl, uploadResponse };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[${uniqueId}] Error in downloadThenUploadToGallery: ${errorMessage}`);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to generate a filename from a prompt and ID.
+ * Sanitizes the prompt to be filesystem-friendly.
+ */
+export function generateVideoFilename(prompt: string, generationId: string, extension: string = ".mp4"): string {
+  // Take first 50 chars of prompt, or full prompt if shorter
+  const promptPart = prompt.substring(0, 50).trim();
+  // Replace non-alphanumeric characters (except spaces, underscores, hyphens) with underscore
+  const sanitizedPrompt = promptPart.replace(/[^a-zA-Z0-9 _-]/g, '_').replace(/\s+/g, '_');
+  // Ensure it's not empty after sanitization
+  const finalPromptPart = sanitizedPrompt || "video";
+  return `${finalPromptPart}_${generationId}${extension}`;
+}
+
+/**
+ * Helper function to map video settings to API request
+ */
+export function mapSettingsToApiRequest(settings: {
+  prompt: string;
+  resolution: string;
+  duration: string; // e.g., "5s"
+  variants: string; // e.g., "2"
+  aspectRatio: string; // e.g., "16:9"
+  fps?: number; // Optional FPS
+}): VideoGenerationRequest {
+  // Parse duration (e.g., "5s" to 5)
+  const n_seconds = parseInt(settings.duration, 10) || 5; // Default to 5 if parsing fails
+
+  // Parse variants (e.g., "2" to 2)
+  const n_variants = parseInt(settings.variants, 10) || 1; // Default to 1 if parsing fails
+
+  let width: number;
+  let height: number;
+
+  // Determine width and height based on resolution and aspect ratio
+  const res = settings.resolution;
+  const ar = settings.aspectRatio;
+
+  if (ar === "16:9") {
+    if (res === "480p") { width = 854; height = 480; }
+    else if (res === "720p") { width = 1280; height = 720; }
+    else if (res === "1080p") { width = 1920; height = 1080; }
+    else { width = 854; height = 480; } // Default for 16:9
+  } else if (ar === "1:1") {
+    if (res === "480p") { width = 480; height = 480; }
+    else if (res === "720p") { width = 720; height = 720; }
+    else if (res === "1080p") { width = 1080; height = 1080; }
+    else { width = 480; height = 480; } // Default for 1:1
+  } else if (ar === "9:16") {
+    if (res === "480p") { width = 480; height = 854; }
+    else if (res === "720p") { width = 720; height = 1280; }
+    else if (res === "1080p") { width = 1080; height = 1920; }
+    else { width = 480; height = 854; } // Default for 9:16
+  } else {
+    // Default case if aspectRatio is unexpected (e.g., old "4:3" somehow gets through)
+    // Fallback to a common 16:9, 480p resolution
+    width = 854; 
+    height = 480;
+    console.warn(`Unexpected aspectRatio: ${ar}, defaulting to 854x480`);
+  }
+
+  return {
+    prompt: settings.prompt,
+    n_variants,
+    n_seconds,
+    height,
+    width,
+    // fps: settings.fps, // Assuming backend doesn't support fps yet or it's handled differently
+  };
+}
+
+/**
+ * List video generation jobs
+ */
+export async function listVideoGenerationJobs(limit: number = 50): Promise<VideoGenerationJob[]> {
+  const url = `${API_BASE_URL}/videos/jobs?limit=${limit}`;
+  
+  if (DEBUG) {
+    console.log(`Listing video generation jobs with limit ${limit}`);
+    console.log(`GET ${url}`);
+  }
+  
+  const response = await fetch(url);
 
   if (DEBUG) {
     console.log(`Response status: ${response.status} ${response.statusText}`);
@@ -117,7 +550,7 @@ export async function uploadVideoToGallery(
   }
 
   if (!response.ok) {
-    throw new Error(`Failed to upload video to gallery: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to list video generation jobs: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
@@ -136,7 +569,8 @@ export async function fetchGalleryVideos(
   limit: number = 50, 
   offset: number = 0,
   continuationToken?: string,
-  prefix?: string
+  prefix?: string,
+  folderPath?: string
 ): Promise<GalleryResponse> {
   // Build query parameters
   const params = new URLSearchParams();
@@ -147,6 +581,9 @@ export async function fetchGalleryVideos(
   }
   if (prefix) {
     params.append('prefix', prefix);
+  }
+  if (folderPath) {
+    params.append('folder_path', folderPath);
   }
 
   const url = `${API_BASE_URL}/gallery/videos?${params.toString()}`;
@@ -191,7 +628,8 @@ export async function fetchGalleryImages(
   limit: number = 50, 
   offset: number = 0,
   continuationToken?: string,
-  prefix?: string
+  prefix?: string,
+  folderPath?: string
 ): Promise<GalleryResponse> {
   // Build query parameters
   const params = new URLSearchParams();
@@ -202,6 +640,9 @@ export async function fetchGalleryImages(
   }
   if (prefix) {
     params.append('prefix', prefix);
+  }
+  if (folderPath) {
+    params.append('folder_path', folderPath);
   }
 
   const url = `${API_BASE_URL}/gallery/images?${params.toString()}`;
@@ -300,75 +741,328 @@ export interface VideoAnalysisResponse {
 /**
  * Analyze a video using AI
  */
-export async function analyzeVideo(videoPath: string, retries = 3): Promise<VideoAnalysisResponse> {
+export async function analyzeVideo(videoName: string, retries = 3): Promise<VideoAnalysisResponse> {
   const url = `${API_BASE_URL}/videos/analyze`;
   
   if (DEBUG) {
-    console.log(`Analyzing video at path: ${videoPath}`);
+    console.log(`Analyzing video with name: ${videoName}`);
     console.log(`POST ${url}`);
   }
   
   let attempt = 0;
   let lastError: Error | null = null;
   
-  while (attempt < retries) {
-    try {
-      attempt++;
-      
-      if (attempt > 1) {
-        console.log(`Retry attempt ${attempt}/${retries} for video analysis`);
-      }
-      
-      // Add a timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ video_path: videoPath }),
-        signal: controller.signal
-      });
-      
-      // Clear the timeout
-      clearTimeout(timeoutId);
-      
-      if (DEBUG) {
-        console.log(`Response status: ${response.status} ${response.statusText}`);
-        if (!response.ok) {
-          console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
-        }
-      }
-      
-      if (!response.ok) {
-        throw new Error(`Failed to analyze video: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (DEBUG) {
-        console.log('Analysis response data:', data);
-      }
-      
-      return data;
-    } catch (error) {
-      console.error(`Video analysis attempt ${attempt}/${retries} failed:`, error);
-      lastError = error instanceof Error ? error : new Error(String(error));
-      
-      // If it's the last attempt, throw the error
-      if (attempt >= retries) {
-        throw lastError;
-      }
-      
-      // Wait before retrying - increasing delay between retries
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+  try {
+    // First, get the SAS tokens to construct the full URL properly
+    const sasTokensResponse = await fetch(`${API_BASE_URL}/gallery/sas-tokens`);
+    
+    if (!sasTokensResponse.ok) {
+      throw new Error(`Failed to get SAS tokens: ${sasTokensResponse.status} ${sasTokensResponse.statusText}`);
     }
+    
+    const sasTokens = await sasTokensResponse.json();
+    
+    // Check if we have the video container URL
+    if (!sasTokens.video_container_url) {
+      console.error('Missing required video_container_url from SAS tokens:', sasTokens);
+      throw new Error('Missing required video container URL from SAS tokens');
+    }
+    
+    // Use the actual video_container_url from the SAS tokens response
+    const videoContainerUrl = sasTokens.video_container_url;
+    const videoSasToken = sasTokens.video_sas_token;
+    
+    // Construct a proper Azure blob storage URL
+    const videoPath = `${videoContainerUrl}/${videoName}${videoSasToken ? `?${videoSasToken}` : ''}`;
+    
+    if (DEBUG) {
+      console.log(`Constructed video path for analysis: ${videoPath}`);
+    }
+    
+    while (attempt < retries) {
+      try {
+        attempt++;
+        
+        if (attempt > 1) {
+          console.log(`Retry attempt ${attempt}/${retries} for video analysis`);
+        }
+        
+        // Add a timeout to prevent hanging requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ video_path: videoPath }),
+          signal: controller.signal
+        });
+        
+        // Clear the timeout
+        clearTimeout(timeoutId);
+        
+        if (DEBUG) {
+          console.log(`Response status: ${response.status} ${response.statusText}`);
+          if (!response.ok) {
+            console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+          }
+        }
+        
+        if (!response.ok) {
+          throw new Error(`Failed to analyze video: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (DEBUG) {
+          console.log('Analysis response data:', data);
+        }
+        
+        return data;
+      } catch (error) {
+        console.error(`Video analysis attempt ${attempt}/${retries} failed:`, error);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // If it's the last attempt, throw the error
+        if (attempt >= retries) {
+          throw lastError;
+        }
+        
+        // Wait before retrying - increasing delay between retries
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+    
+    // This should never happen due to the throw in the loop, but TypeScript requires a return
+    throw lastError || new Error("Video analysis failed after retries");
+  } catch (error) {
+    console.error('Error in analyzeVideo:', error);
+    throw error;
+  }
+}
+
+export interface EnhancePromptRequest {
+  original_prompt: string;
+}
+
+export interface EnhancePromptResponse {
+  enhanced_prompt: string;
+}
+
+/**
+ * Enhance a prompt using the backend API (for videos)
+ */
+export async function enhancePrompt(prompt: string): Promise<string> {
+  const url = `${API_BASE_URL}/videos/prompt/enhance`;
+  
+  if (DEBUG) {
+    console.log(`Enhancing video prompt: ${prompt}`);
+    console.log(`POST ${url}`);
   }
   
-  // This should never happen due to the throw in the loop, but TypeScript requires a return
-  throw lastError || new Error("Video analysis failed after retries");
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ original_prompt: prompt }),
+    });
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to enhance video prompt: ${response.status} ${response.statusText}`);
+    }
+
+    const data: EnhancePromptResponse = await response.json();
+    
+    if (DEBUG) {
+      console.log('Enhanced video prompt:', data.enhanced_prompt);
+    }
+    
+    return data.enhanced_prompt;
+  } catch (error) {
+    console.error('Error enhancing video prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Enhance an image prompt using the backend API
+ */
+export async function enhanceImagePrompt(prompt: string): Promise<string> {
+  const url = `${API_BASE_URL}/images/prompt/enhance`;
+  
+  if (DEBUG) {
+    console.log(`Enhancing image prompt: ${prompt}`);
+    console.log(`POST ${url}`);
+  }
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ original_prompt: prompt }),
+    });
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to enhance image prompt: ${response.status} ${response.statusText}`);
+    }
+
+    const data: EnhancePromptResponse = await response.json();
+    
+    if (DEBUG) {
+      console.log('Enhanced image prompt:', data.enhanced_prompt);
+    }
+    
+    return data.enhanced_prompt;
+  } catch (error) {
+    console.error('Error enhancing image prompt:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate images using DALL-E
+ */
+export async function generateImages(
+  prompt: string, 
+  n: number = 1,
+  size: string = "1024x1024",
+  response_format: string = "b64_json",
+  background: string = "auto",
+  outputFormat: string = "png",
+  quality: string = "auto"
+): Promise<ImageGenerationResponse> {
+  const url = `${API_BASE_URL}/images/generate`;
+  
+  if (DEBUG) {
+    console.log(`Generating images with prompt: ${prompt}`);
+    console.log(`POST ${url}`);
+  }
+  
+  const payload = {
+    prompt,
+    n,
+    size,
+    response_format,
+    background,
+    output_format: outputFormat,
+    quality
+  };
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to generate images: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (DEBUG) {
+      console.log('Generated images response data:', data);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error generating images:', error);
+    throw error;
+  }
+}
+
+/**
+ * Save generated images to blob storage
+ */
+export async function saveGeneratedImages(
+  generationResponse: ImageGenerationResponse,
+  prompt: string,
+  saveAll: boolean = true,
+  folderPath: string = "",
+  outputFormat: string = "png",
+  model: string = "gpt-image-1",
+  background: string = "auto",
+  size: string = "1024x1024"
+): Promise<ImageSaveResponse> {
+  const url = `${API_BASE_URL}/images/save`;
+  
+  if (DEBUG) {
+    console.log(`Saving generated images to blob storage`);
+    console.log(`POST ${url}`);
+  }
+  
+  const payload = {
+    generation_response: generationResponse,
+    prompt,
+    save_all: saveAll,
+    folder_path: folderPath,
+    output_format: outputFormat,
+    model,
+    background,
+    size
+  };
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to save images: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (DEBUG) {
+      console.log('Saved images response data:', data);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error saving images:', error);
+    throw error;
+  }
 }
 
 /**
@@ -456,13 +1150,13 @@ export async function analyzeImage(imageUrl: string, retries = 3): Promise<Image
 }
 
 /**
- * Update metadata for an asset in the gallery
+ * Update asset metadata
  */
 export async function updateAssetMetadata(
   blobName: string,
   mediaType: MediaType,
-  metadata: Record<string, any>
-): Promise<any> {
+  metadata: AssetMetadata
+): Promise<MetadataUpdateResponse> {
   const params = new URLSearchParams();
   params.append('blob_name', blobName);
   params.append('media_type', mediaType);
@@ -509,66 +1203,49 @@ export async function updateAssetMetadata(
 }
 
 /**
- * Fetch all folders from the gallery
+ * Fetch folders
  */
 export async function fetchFolders(
   mediaType?: MediaType
-): Promise<{folders: string[], folder_hierarchy: any}> {
+): Promise<{folders: string[], folder_hierarchy: FolderHierarchy}> {
   let url = `${API_BASE_URL}/gallery/folders`;
   
   if (mediaType) {
     url += `?media_type=${mediaType}`;
   }
   
-  // Always log for debugging this issue
-  console.log(`Fetching folders from: ${url}`);
-  console.log('Current API_BASE_URL:', API_BASE_URL);
+  if (DEBUG) {
+    console.log(`Fetching folders`);
+    console.log(`GET ${url}`);
+  }
   
   try {
-    // Add a timeout to prevent hanging requests
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const response = await fetch(url);
     
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-      signal: controller.signal
-    });
-    
-    // Clear the timeout
-    clearTimeout(timeoutId);
-    
-    console.log(`Response status: ${response.status} ${response.statusText}`);
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
     
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Could not read response text');
-      console.error('Error response:', errorText);
-      throw new Error(`Failed to fetch folders: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Failed to fetch folders: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
-    console.log('Folders response data:', data);
+    
+    if (DEBUG) {
+      console.log('Folders response data:', data);
+    }
     
     return {
       folders: data.folders || [],
       folder_hierarchy: data.folder_hierarchy || {}
     };
   } catch (error) {
-    // Enhanced error logging
     console.error('Error fetching folders:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : 'No stack trace available',
-      url: url
-    });
-    
-    // Return empty data instead of throwing to prevent UI errors
-    return {
-      folders: [],
-      folder_hierarchy: {}
-    };
+    throw error;
   }
 }
 
@@ -681,7 +1358,7 @@ export async function moveAsset(
 }
 
 /**
- * Edit an image using gpt-image-1
+ * Edit an image using the OpenAI API
  */
 export async function editImage(
   sourceImages: File | File[],
@@ -689,7 +1366,7 @@ export async function editImage(
   n: number = 1,
   size: string = "auto",
   quality: string = "auto"
-): Promise<any> {
+): Promise<ImageEditResponse> {
   const url = `${API_BASE_URL}/images/edit/upload`;
   
   if (DEBUG) {
@@ -823,23 +1500,42 @@ export async function analyzeImageFromBase64(base64Image: string, retries = 3): 
   throw lastError || new Error("Image analysis failed after retries");
 }
 
-export interface EnhancePromptRequest {
+/**
+ * Interface for brand protection request
+ */
+export interface BrandProtectionRequest {
   original_prompt: string;
+  brands_to_protect: string;
+  protection_mode: string;
 }
 
-export interface EnhancePromptResponse {
+/**
+ * Interface for brand protection response
+ */
+export interface BrandProtectionResponse {
   enhanced_prompt: string;
 }
 
 /**
- * Enhance an image prompt using the backend API
+ * Protect an image prompt for brand safety
  */
-export async function enhanceImagePrompt(prompt: string): Promise<string> {
-  const url = `${API_BASE_URL}/images/prompt/enhance`;
+export async function protectImagePrompt(
+  prompt: string,
+  brandsToProtect: string[],
+  protectionMode: string
+): Promise<string> {
+  const url = `${API_BASE_URL}/images/prompt/protect`;
   
   if (DEBUG) {
-    console.log(`Enhancing image prompt: ${prompt}`);
+    console.log(`Protecting image prompt: ${prompt}`);
+    console.log(`Brands to protect: ${brandsToProtect.join(', ')}`);
+    console.log(`Protection mode: ${protectionMode}`);
     console.log(`POST ${url}`);
+  }
+  
+  // If brand protection is off or no brands to protect, just return the original prompt
+  if (protectionMode === "off" || brandsToProtect.length === 0) {
+    return prompt;
   }
   
   try {
@@ -848,7 +1544,11 @@ export async function enhanceImagePrompt(prompt: string): Promise<string> {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ original_prompt: prompt }),
+      body: JSON.stringify({
+        original_prompt: prompt,
+        brands_to_protect: brandsToProtect.join(', '),
+        protection_mode: protectionMode
+      }),
     });
 
     if (DEBUG) {
@@ -859,144 +1559,70 @@ export async function enhanceImagePrompt(prompt: string): Promise<string> {
     }
 
     if (!response.ok) {
-      throw new Error(`Failed to enhance image prompt: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to protect image prompt: ${response.status} ${response.statusText}`);
     }
 
-    const data: EnhancePromptResponse = await response.json();
+    const data: BrandProtectionResponse = await response.json();
     
     if (DEBUG) {
-      console.log('Enhanced image prompt:', data.enhanced_prompt);
+      console.log('Protected image prompt:', data.enhanced_prompt);
     }
     
     return data.enhanced_prompt;
   } catch (error) {
-    console.error('Error enhancing image prompt:', error);
-    throw error;
+    console.error('Error protecting image prompt:', error);
+    // If there's an error, return the original prompt
+    return prompt;
   }
 }
 
 /**
- * Generate images using GPT-Image-1
+ * Analyze a video and save the analysis results to the video's metadata
+ * This combines analyzing the video and updating its metadata in a single workflow
  */
-export async function generateImages(
-  prompt: string, 
-  n: number = 1,
-  size: string = "1024x1024",
-  response_format: string = "b64_json",
-  background: string = "auto",
-  outputFormat: string = "png",
-  quality: string = "auto"
-): Promise<any> {
-  const url = `${API_BASE_URL}/images/generate`;
-  
+export async function analyzeAndUpdateVideoMetadata(videoName: string): Promise<{
+  analysis: VideoAnalysisResponse;
+  metadata: MetadataUpdateResponse;
+}> {
   if (DEBUG) {
-    console.log(`Generating images with prompt: ${prompt}`);
-    console.log(`POST ${url}`);
+    console.log(`Analyzing video and updating metadata for: ${videoName}`);
   }
-  
-  const payload = {
-    prompt,
-    n,
-    size,
-    response_format,
-    background,
-    output_format: outputFormat,
-    quality
-  };
   
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (DEBUG) {
-      console.log(`Response status: ${response.status} ${response.statusText}`);
-      if (!response.ok) {
-        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
-      }
+    // Step 1: Analyze the video
+    const analysis = await analyzeVideo(videoName);
+    
+    if (!analysis) {
+      throw new Error("Failed to analyze video: No analysis result returned");
     }
-
-    if (!response.ok) {
-      throw new Error(`Failed to generate images: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
     
     if (DEBUG) {
-      console.log('Generated images response data:', data);
+      console.log("Video analysis complete, updating metadata...");
     }
     
-    return data;
+    // Step 2: Prepare metadata update with analysis results
+    const metadata: AssetMetadata = {
+      analysis_summary: analysis.summary,
+      analysis_products: analysis.products,
+      analysis_feedback: analysis.feedback,
+      analysis_tags: analysis.tags.join(","),
+      has_analysis: "true",
+      analyzed_at: new Date().toISOString()
+    };
+    
+    // Step 3: Update the video's metadata
+    const metadataResult = await updateAssetMetadata(videoName, MediaType.VIDEO, metadata);
+    
+    if (DEBUG) {
+      console.log("Metadata update complete");
+    }
+    
+    return {
+      analysis,
+      metadata: metadataResult
+    };
   } catch (error) {
-    console.error('Error generating images:', error);
+    console.error("Error in analyzeAndUpdateVideoMetadata:", error);
     throw error;
   }
-}
-
-/**
- * Save generated images to blob storage
- */
-export async function saveGeneratedImages(
-  generationResponse: any,
-  prompt: string,
-  saveAll: boolean = true,
-  folderPath: string = "",
-  outputFormat: string = "png",
-  model: string = "gpt-image-1",
-  background: string = "auto",
-  size: string = "1024x1024"
-): Promise<any> {
-  const url = `${API_BASE_URL}/images/save`;
-  
-  if (DEBUG) {
-    console.log(`Saving generated images to blob storage`);
-    console.log(`POST ${url}`);
-  }
-  
-  const payload = {
-    generation_response: generationResponse,
-    prompt,
-    save_all: saveAll,
-    folder_path: folderPath,
-    output_format: outputFormat,
-    model,
-    background,
-    size
-  };
-  
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (DEBUG) {
-      console.log(`Response status: ${response.status} ${response.statusText}`);
-      if (!response.ok) {
-        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
-      }
-    }
-
-    if (!response.ok) {
-      throw new Error(`Failed to save images: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    if (DEBUG) {
-      console.log('Saved images response data:', data);
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Error saving images:', error);
-    throw error;
-  }
-}
+} 
