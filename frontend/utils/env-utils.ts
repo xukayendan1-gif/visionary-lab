@@ -5,24 +5,12 @@ interface EnvVariables {
   API_URL: string;
   APP_VERSION: string;
   DEBUG_MODE: boolean;
+  IS_CODESPACES: boolean;
 }
 
 interface ApiStatus {
-  services: {
-    image_generation: boolean;
-    llm: boolean;
-    storage: boolean;
-  };
-  providers: {
-    using_azure_openai: boolean;
-    using_direct_openai: boolean;
-  };
-  summary: {
-    all_services_ready: boolean;
-    image_generation_client: string;
-    llm_client: string;
-    storage: string;
-  };
+  set: string[];
+  missing: string[];
 }
 
 export async function getEnvironmentVariables(): Promise<EnvVariables> {
@@ -34,29 +22,37 @@ export async function getEnvironmentVariables(): Promise<EnvVariables> {
     return await response.json();
   } catch (error) {
     console.error('Error fetching environment variables:', error);
+    // Check if running in GitHub Codespaces
+    const isCodespaces = typeof process.env.CODESPACE_NAME === 'string' && 
+                         process.env.CODESPACE_NAME.length > 0;
+                         
     return {
       NODE_ENV: process.env.NODE_ENV || 'development',
       API_URL: '',
       APP_VERSION: '0.0.0',
-      DEBUG_MODE: false
+      DEBUG_MODE: false,
+      IS_CODESPACES: isCodespaces
     };
   }
 }
 
-// Build API URL from environment variables
-const getApiUrl = (endpoint: string): string => {
-  const protocol = process.env.API_PROTOCOL || 'http';
-  const hostname = process.env.API_HOSTNAME || 'localhost';
-  const port = process.env.API_PORT || '8000';
-  return `${protocol}://${hostname}${port ? `:${port}` : ''}/api/v1/${endpoint}`;
-};
-
 export async function getApiStatus(): Promise<ApiStatus | null> {
   try {
-    const apiUrl = getApiUrl('env/status');
-    const response = await fetch(apiUrl);
+    const API_PROTOCOL = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
+    const API_HOSTNAME = process.env.NEXT_PUBLIC_API_HOSTNAME || '127.0.0.1';
+    // For GitHub Codespaces, port is part of the hostname, so this might be empty
+    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
+    
+    // Build URL conditionally based on whether port is specified
+    const url = API_PORT 
+      ? `${API_PROTOCOL}://${API_HOSTNAME}:${API_PORT}/api/v1/env/status`
+      : `${API_PROTOCOL}://${API_HOSTNAME}/api/v1/env/status`;
+    
+    console.log(`Checking API status at: ${url}`);
+    
+    const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Failed to fetch API status from ${apiUrl}`);
+      throw new Error('Failed to fetch API status');
     }
     return await response.json();
   } catch (error) {

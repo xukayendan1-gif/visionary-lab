@@ -1,8 +1,18 @@
 # Import models to expose them at the package level
-from models import common, images, gallery
+from backend.models import common, images, videos, gallery
+
+# Video models actually used by the API
+from backend.models.videos import (
+    VideoGenerationRequest,
+    VideoGenerationJobResponse,
+    VideoAnalyzeRequest,
+    VideoAnalyzeResponse,
+    VideoFilenameGenerateRequest,
+    VideoFilenameGenerateResponse
+)
 
 # Image models used by the skeleton API
-from models.images import (
+from backend.models.images import (
     ImageGenerationRequest,
     ImageEditRequest,
     ImageGenerationResponse,
@@ -14,14 +24,12 @@ from models.images import (
     ImageAnalyzeResponse,
     ImagePromptEnhancementRequest,
     ImagePromptEnhancementResponse,
-    ImagePromptBrandProtectionRequest,
-    ImagePromptBrandProtectionResponse,
     ImageFilenameGenerateRequest,
     ImageFilenameGenerateResponse,
 )
 
 # Gallery models
-from models.gallery import (
+from backend.models.gallery import (
     GalleryItem,
     GalleryResponse,
     MediaType,

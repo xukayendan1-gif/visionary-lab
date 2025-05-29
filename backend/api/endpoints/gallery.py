@@ -7,9 +7,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from azure.storage.blob import generate_container_sas, ContainerSasPermissions
 
-from core.azure_storage import AzureBlobStorageService
-from core.config import settings
-from models.gallery import (
+from backend.core.azure_storage import AzureBlobStorageService
+from backend.core.config import settings
+from backend.models.gallery import (
     GalleryResponse,
     GalleryItem,
     MediaType,
@@ -115,9 +115,9 @@ async def get_gallery_items(
                 folder_path=blob.get("folder_path", "")
             ))
 
-        # Sort by last_modified (newest first)
+        # Sort by creation_time (newest first)
         gallery_items.sort(
-            key=lambda x: x.last_modified if x.last_modified else "",
+            key=lambda x: x.creation_time if x.creation_time else "",
             reverse=True
         )
 
@@ -207,6 +207,12 @@ async def get_gallery_images(
                 folder_path=blob.get("folder_path", "")
             ))
 
+        # Sort by creation_time, newest first
+        gallery_items.sort(
+            key=lambda x: x.creation_time if x.creation_time else "",
+            reverse=True
+        )
+
         return GalleryResponse(
             success=True,
             message="Gallery images retrieved successfully",
@@ -256,6 +262,10 @@ async def get_gallery_videos(
         # Process video results
         gallery_items = []
         for blob in results["blobs"]:
+            # Skip .folder files used as folder markers
+            if blob["name"].endswith(".folder"):
+                continue
+
             gallery_items.append(GalleryItem(
                 id=blob["name"].split(".")[0].split(
                     "/")[-1],  # Extract UUID part
@@ -270,6 +280,12 @@ async def get_gallery_videos(
                 metadata=blob["metadata"],
                 folder_path=blob.get("folder_path", "")
             ))
+
+        # Sort by creation_time (newest first)
+        gallery_items.sort(
+            key=lambda x: x.creation_time if x.creation_time else "",
+            reverse=True
+        )
 
         return GalleryResponse(
             success=True,
@@ -816,6 +832,16 @@ async def move_asset(
 async def get_sas_tokens():
     """Generate and return SAS tokens for frontend direct access to blob storage"""
     try:
+        # Generate video token with read-only permissions, valid for 1 hour
+        video_token = generate_container_sas(
+            account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
+            container_name=settings.AZURE_BLOB_VIDEO_CONTAINER,
+            account_key=settings.AZURE_STORAGE_ACCOUNT_KEY,
+            permission=ContainerSasPermissions(
+                read=True),  # Read-only for frontend
+            expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+
         # Generate image token with read-only permissions, valid for 1 hour
         image_token = generate_container_sas(
             account_name=settings.AZURE_STORAGE_ACCOUNT_NAME,
@@ -826,12 +852,14 @@ async def get_sas_tokens():
             expiry=datetime.now(timezone.utc) + timedelta(hours=1),
         )
 
-        # Return token and container URL
+        # Return tokens and container URLs
         expiry_time = datetime.now(timezone.utc) + timedelta(hours=1)
         return {
             "success": True,
-            "message": "SAS token generated successfully",
+            "message": "SAS tokens generated successfully",
+            "video_sas_token": video_token,
             "image_sas_token": image_token,
+            "video_container_url": f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{settings.AZURE_BLOB_VIDEO_CONTAINER}",
             "image_container_url": f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{settings.AZURE_BLOB_IMAGE_CONTAINER}",
             "expiry": expiry_time
         }

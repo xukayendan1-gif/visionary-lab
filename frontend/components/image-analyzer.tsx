@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
+interface OriginalItem {
+  size?: number;
+  [key: string]: unknown;
+}
+
 interface ImageMetadata {
   src: string;
   title: string;
@@ -10,7 +15,7 @@ interface ImageMetadata {
   id: string;
   name: string;
   tags?: string[];
-  originalItem: any;
+  originalItem: OriginalItem;
   width?: number;
   height?: number;
   size: "small" | "medium" | "large";
@@ -19,6 +24,9 @@ interface ImageMetadata {
 interface ImageAnalyzerProps {
   image: ImageMetadata;
 }
+
+// Define a type for the augmented function
+type HandleImageLoadFunction = ((e: React.SyntheticEvent<HTMLImageElement>) => void) & { forwardRef?: boolean };
 
 export function ImageAnalyzer({ image }: ImageAnalyzerProps) {
   const [imageStats, setImageStats] = useState<{
@@ -35,7 +43,7 @@ export function ImageAnalyzer({ image }: ImageAnalyzerProps) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
   
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad: HandleImageLoadFunction = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
       setImageStats({
@@ -48,7 +56,7 @@ export function ImageAnalyzer({ image }: ImageAnalyzerProps) {
   };
   
   // Expose the handleImageLoad method to parent components
-  (handleImageLoad as any).forwardRef = true;
+  handleImageLoad.forwardRef = true;
   
   return (
     <div className="space-y-2 text-sm">

@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 from fastapi import UploadFile
 from pathlib import Path
 
-from core.config import settings
+from backend.core.config import settings
+from backend.models import videos
 
 
 class StorageService:

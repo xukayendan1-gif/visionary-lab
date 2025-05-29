@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Dict, Any, Union
-from models.common import BaseResponse
+from backend.models.common import BaseResponse
 from pydantic import validator
 
 # TODO: Implement full image models with all required parameters and fields
@@ -9,7 +9,7 @@ from pydantic import validator
 class ImagePromptEnhancementRequest(BaseModel):
     """Request model for enhancing image generation prompts"""
     original_prompt: str = Field(...,
-                                 description="Prompt to enhance for image generation")    
+                                 description="Prompt to enhance for image generation")
 
 
 class ImagePromptEnhancementResponse(BaseModel):
@@ -23,14 +23,15 @@ class ImagePromptBrandProtectionRequest(BaseModel):
     original_prompt: str = Field(...,
                                  description="Prompt to protect for image generation")
     brands_to_protect: Optional[str] = Field(None,
-                                            description="Str or comma-separated brands to protect in the prompt.")
+                                             description="Str or comma-separated brands to protect in the prompt.")
     protection_mode: Optional[str] = Field("neutralize",
-                                            description="Mode for brand protection: 'neutralize' (default) or 'replace'. Neutralize removes the brand, while replace substitutes competitirs with the protected brand.")
-    
+                                           description="Mode for brand protection: 'neutralize' (default) or 'replace'. Neutralize removes the brand, while replace substitutes competitirs with the protected brand.")
+
 
 class ImagePromptBrandProtectionResponse(BaseModel):
     """Response model for rewritten image generation prompts"""
     enhanced_prompt: str = Field(...,
+                                 # Using OpenAI DALL-E as placeholder for gpt-image-1 because of API similarity
                                  description="Rewritten prompt for image generation")
 
 

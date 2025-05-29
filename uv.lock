@@ -1300,7 +1300,7 @@ wheels = [
 ]
 
 [[package]]
-name = "visionary-lab"
+name = "video-gen"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

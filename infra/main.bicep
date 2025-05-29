@@ -29,14 +29,22 @@ param llmModelType string = 'gpt-4o'
 param imageGenOpenAiAccountName string = 'myOpenAiAccount'
 param imageGenDeploymentName string = 'gpt-image-1'
 param imageGenModelType string = 'gpt-image-1'
+param soraOpenAiAccountName string = 'myOpenAiAccount'
+param soraDeploymentName string = 'sora'
 @secure()
 param IMAGEGEN_AOAI_API_KEY string
 @secure()
 param LLM_AOAI_API_KEY string
+@secure()
+param SORA_AOAI_API_KEY string
+
 
 // Parameters for the Docker images for the backend and frontend container apps
-param DOCKER_IMAGE_BACKEND string = 'aigbbemea.azurecr.io/visionarylab:latest'
-param DOCKER_IMAGE_FRONTEND string = 'aigbbemea.azurecr.io/visionarylab-frontend:latest'
+param DOCKER_IMAGE_BACKEND string = 'aigbbemea.azurecr.io/visionarylab-video:latest'
+param DOCKER_IMAGE_FRONTEND string = 'aigbbemea.azurecr.io/visionarylab-frontend-video:latest'
+param API_PROTOCOL string = ''
+param API_HOSTNAME string = ''
+param API_PORT string = ''
 
 // Azure Storage Account
 module storageAccountMod './modules/storageAccount.bicep' = {
@@ -131,6 +139,9 @@ module containerAppBackend './modules/containerApp.bicep' = {
     DOCKER_IMAGE: DOCKER_IMAGE_BACKEND
     IMAGEGEN_AOAI_API_KEY: IMAGEGEN_AOAI_API_KEY
     LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
+    SORA_AOAI_RESOURCE: soraOpenAiAccountName
+    SORA_DEPLOYMENT: soraDeploymentName
+    SORA_AOAI_API_KEY: SORA_AOAI_API_KEY
   }
   dependsOn: [
     storageAccountMod
@@ -157,6 +168,9 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     DOCKER_IMAGE: DOCKER_IMAGE_FRONTEND
     IMAGEGEN_AOAI_API_KEY: IMAGEGEN_AOAI_API_KEY
     LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
+    API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
+    API_PORT: API_PORT == '' ? '443' : API_PORT
+    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
   }
   dependsOn: [
     storageAccountMod

@@ -174,3 +174,6 @@ cython_debug/
 .pypirc
 videos
 .azure
+
+# Visionary Lab
+notebooks/video-generations/

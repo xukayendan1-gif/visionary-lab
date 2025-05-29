@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .  # Set to root folder where pyproject.toml is located
+      dockerfile: backend/Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=0  # Disable build cache
+    ports:
+      - "8000:80"
+    volumes:
+      - ./backend/static:/app/backend/static
+    environment:
+      # Required Azure OpenAI for Sora Video Generation - MUST BE SET BY USER
+      - SORA_AOAI_RESOURCE=${SORA_AOAI_RESOURCE}
+      - SORA_DEPLOYMENT=${SORA_DEPLOYMENT}
+      - SORA_AOAI_API_KEY=${SORA_AOAI_API_KEY}
+      
+      # Required Azure OpenAI for LLM - MUST BE SET BY USER
+      - LLM_AOAI_RESOURCE=${LLM_AOAI_RESOURCE}
+      - LLM_DEPLOYMENT=${LLM_DEPLOYMENT}
+      - LLM_AOAI_API_KEY=${LLM_AOAI_API_KEY}
+      
+      # Required Azure OpenAI for Image Generation - MUST BE SET BY USER
+      - IMAGEGEN_AOAI_RESOURCE=${IMAGEGEN_AOAI_RESOURCE}
+      - IMAGEGEN_DEPLOYMENT=${IMAGEGEN_DEPLOYMENT}
+      - IMAGEGEN_AOAI_API_KEY=${IMAGEGEN_AOAI_API_KEY}
+      
+      # Required Azure Blob Storage Settings - MUST BE SET BY USER
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - AZURE_BLOB_SERVICE_URL=${AZURE_BLOB_SERVICE_URL}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
+      - AZURE_BLOB_IMAGE_CONTAINER=${AZURE_BLOB_IMAGE_CONTAINER:-images}
+      - AZURE_BLOB_VIDEO_CONTAINER=${AZURE_BLOB_VIDEO_CONTAINER:-videos}
+      
+      # Required Azure OpenAI API Version
+      - AOAI_API_VERSION=${AOAI_API_VERSION:-2025-04-01-preview}
+      
+      # Path configuration
+      - PYTHONPATH=/app
+      - PATH=/app/.venv/bin:${PATH}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # When running in GitHub Codespaces, this must match the Codespace URL structure
+      - NEXT_PUBLIC_API_PROTOCOL=${CODESPACE_API_PROTOCOL:-http}
+      - NEXT_PUBLIC_API_HOSTNAME=${CODESPACE_NAME:+${CODESPACE_NAME}-8000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-localhost}}
+      # Port should be unset when using Codespaces URL (domain already includes port)
+      - NEXT_PUBLIC_API_PORT=${CODESPACE_NAME:+}
+      # Storage account name must match backend
+      - NEXT_PUBLIC_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: ai-content-lab-network
+    driver: bridge 

@@ -12,7 +12,7 @@ import tempfile
 import os
 import uuid
 
-from models.images import (
+from backend.models.images import (
     ImageGenerationRequest,
     ImageEditRequest,
     ImageGenerationResponse,
@@ -33,17 +33,12 @@ from models.images import (
     TokenUsage,
     InputTokensDetails
 )
-from models.gallery import MediaType
-from core import llm_client, dalle_client, image_sas_token
-from core.azure_storage import AzureBlobStorageService
-from core.analyze import ImageAnalyzer
-from core.config import settings
-from core.instructions import (analyze_image_system_message,
-                                       img_prompt_enhance_msg,
-                                       brand_protect_replace_msg,
-                                       brand_protect_neutralize_msg,
-                                       filename_system_message
-)
+from backend.models.gallery import MediaType
+from backend.core import llm_client, dalle_client, image_sas_token
+from backend.core.azure_storage import AzureBlobStorageService
+from backend.core.analyze import ImageAnalyzer
+from backend.core.config import settings
+from backend.core.instructions import analyze_image_system_message, img_prompt_enhance_msg, brand_protect_neutralize_msg, brand_protect_replace_msg, filename_system_message
 
 router = APIRouter()
 
@@ -68,8 +63,8 @@ async def generate_image(request: ImageGenerationRequest):
         if request.model == "gpt-image-1":
             if request.quality:
                 params["quality"] = request.quality
-            if request.background != "auto":
-                params["background"] = request.background
+            # Always include background parameter regardless of value
+            params["background"] = request.background
             if request.output_format != "png":
                 params["output_format"] = request.output_format
             if request.output_format in ["webp", "jpeg"] and request.output_compression != 100:
@@ -779,11 +774,15 @@ def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
     try:
         if req.brands_to_protect:
             if req.protection_mode == "replace":
-                logger.info(f"Replace competitor brands of: {req.brands_to_protect}")
-                system_message = brand_protect_replace_msg.format(brands=req.brands_to_protect)
+                logger.info(
+                    f"Replace competitor brands of: {req.brands_to_protect}")
+                system_message = brand_protect_replace_msg.format(
+                    brands=req.brands_to_protect)
             elif req.protection_mode == "neutralize":
-                logger.info(f"Neutralize competitor brands of: {req.brands_to_protect}")
-                system_message = brand_protect_neutralize_msg.format(brands=req.brands_to_protect)       
+                logger.info(
+                    f"Neutralize competitor brands of: {req.brands_to_protect}")
+                system_message = brand_protect_neutralize_msg.format(
+                    brands=req.brands_to_protect)
         else:
             logger.info(f"No brand protection specified.")
             return ImagePromptBrandProtectionResponse(enhanced_prompt=req.original_prompt)
@@ -811,9 +810,6 @@ def protect_image_prompt(req: ImagePromptBrandProtectionRequest):
     except Exception as e:
         logger.error(f"Error enhancing image prompt: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
 
 
 @router.post("/filename/generate", response_model=ImageFilenameGenerateResponse)

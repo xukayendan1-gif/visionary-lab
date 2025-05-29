@@ -16,6 +16,11 @@ param LLM_AOAI_RESOURCE string = 'emea-gbb-sweden-central'
 param LLM_DEPLOYMENT string = 'gpt-4o-2'
 @secure()
 param LLM_AOAI_API_KEY string
+// Azure OpenAI Sora
+param SORA_AOAI_RESOURCE string = 'aoai-akc-uswest3'
+param SORA_DEPLOYMENT string = 'sora'
+@secure()
+param SORA_AOAI_API_KEY string = ''
 // Azure Blob Storage
 param AZURE_BLOB_SERVICE_URL string
 param AZURE_STORAGE_ACCOUNT_NAME string
@@ -77,6 +82,18 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
               value: LLM_AOAI_API_KEY
             }
             {
+              name: 'SORA_AOAI_RESOURCE'
+              value: SORA_AOAI_RESOURCE
+            }
+            {
+              name: 'SORA_DEPLOYMENT'
+              value: SORA_DEPLOYMENT
+            }
+            {
+              name: 'SORA_AOAI_API_KEY'
+              value: SORA_AOAI_API_KEY
+            }
+            {
               name: 'AZURE_BLOB_SERVICE_URL'
               value: AZURE_BLOB_SERVICE_URL
             }
@@ -102,6 +119,18 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
             }
             {
               name: 'API_PORT'
+                value: API_PORT
+            }
+            {
+              name: 'NEXT_PUBLIC_API_PROTOCOL'
+              value: API_PROTOCOL
+            }
+            {
+              name: 'NEXT_PUBLIC_API_HOSTNAME'
+              value: API_HOSTNAME
+            }
+            {
+              name: 'NEXT_PUBLIC_API_PORT'
                 value: API_PORT
             }
             {

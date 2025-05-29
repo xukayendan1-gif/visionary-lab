@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Settings, Wand2, Loader2, ArrowUp, CloudCog, Save, Database, Shield, Zap, Sparkles, Images, FolderTree, Plus, Check, RefreshCw, FolderUp, Layers, FileType, PlusCircle, BarChart4 } from "lucide-react";
+import { X, Settings, Wand2, Loader2, ArrowUp, Images, FolderTree, Plus, Check, RefreshCw, Layers, FileType, PlusCircle, BarChart4, Eye, Maximize } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -9,13 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+
 import { cn } from "@/utils/utils";
 import {
   Tooltip,
@@ -23,13 +17,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { enhanceImagePrompt, createFolder, MediaType, fetchFolders } from "@/services/api";
 import { toast } from "sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useSidebar } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
+import { useImageSettings } from "@/context/image-settings-context";
+import { useTheme } from "next-themes";
 
 interface ImageOverlayProps {
   onGenerate: (settings: {
@@ -45,6 +38,7 @@ interface ImageOverlayProps {
     outputFormat: string;
     quality: string;
     sourceImages?: File[];
+    brandsList?: string[];
   }) => void;
   isGenerating?: boolean;
   onPromptChange?: (newPrompt: string, isEnhanced: boolean) => void;
@@ -63,9 +57,9 @@ export function ImageOverlay({
 }: ImageOverlayProps) {
   const [prompt, setPrompt] = useState("");
   const [imageSize, setImageSize] = useState("1024x1024");
-  const [saveImages, setSaveImages] = useState(true);
-  const [mode, setMode] = useState("prod");
-  const [brandsProtection, setBrandsProtection] = useState("off");
+  const [saveImages] = useState(true);
+  const [mode] = useState("prod");
+  const imageSettings = useImageSettings();
   const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
   const [variations, setVariations] = useState("1");
   const [expanded, setExpanded] = useState(true);
@@ -85,8 +79,19 @@ export function ImageOverlay({
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Get sidebar state to adjust overlay positioning
-  const sidebar = useSidebar();
+  // Add theme context
+  const { theme, resolvedTheme } = useTheme();
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
+  
+  // Move theme detection to useEffect to prevent hydration mismatch
+  useEffect(() => {
+    // Only run on client-side
+    setIsDarkTheme(
+      resolvedTheme === 'dark' || 
+      theme === 'dark' || 
+      (!theme && !resolvedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    );
+  }, [theme, resolvedTheme]);
 
   // Update folder when selectedFolder prop changes
   useEffect(() => {
@@ -99,7 +104,7 @@ export function ImageOverlay({
       newFolderInputRef.current.focus();
     }
   }, [isCreatingFolder]);
-
+  
   // Resize textarea when prompt changes (especially after AI enhancement)
   useEffect(() => {
     if (textareaRef.current) {
@@ -121,22 +126,62 @@ export function ImageOverlay({
     }
   }, [background, outputFormat]);
 
+  // Get overlay background color based on theme
+  const getOverlayBgColor = () => {
+    return isDarkTheme 
+      ? 'backdrop-blur-md bg-black/70 border-white/10' 
+      : 'backdrop-blur-md bg-white/90 border-black/10 shadow-lg';
+  };
+  
+  // Get input and control background color based on theme
+  const getControlBgColor = () => {
+    return isDarkTheme
+      ? 'bg-black/30 border-0 text-white focus:ring-white/20'
+      : 'bg-white/50 border-gray-200 text-gray-900 focus:ring-gray-200';
+  };
+  
+  // Get text color based on theme
+  const getTextColor = () => {
+    return isDarkTheme ? 'text-white' : 'text-gray-900';
+  };
+  
+  // Get muted text color based on theme
+  const getMutedTextColor = () => {
+    return isDarkTheme ? 'text-white/70' : 'text-gray-500';
+  };
+
+  // Get hover background color based on theme
+  const getHoverBgColor = () => {
+    return isDarkTheme ? 'hover:bg-white/10' : 'hover:bg-gray-200/50';
+  };
+
   const handleSubmit = () => {
-    if (!prompt.trim() || isGenerating) return;
+    if (prompt.trim() === "") {
+      toast.error("Please enter a prompt");
+      return;
+    }
+    
+    const numVariations = parseInt(variations);
+    
+    if (isNaN(numVariations) || numVariations < 1 || numVariations > 4) {
+      toast.error("Please select a valid number of variations (1-4)");
+      return;
+    }
     
     onGenerate({
       prompt,
       imageSize,
       saveImages,
       mode,
-      brandsProtection,
-      brandProtectionModel: aiAnalysisEnabled ? "GPT-4o" : "None",
-      variations: parseInt(variations),
-      folder: folder === "root" ? "" : folder,
+      brandsProtection: imageSettings.settings.brandsProtection,
+      brandProtectionModel: "GPT-4o",
+      variations: numVariations,
+      folder,
       background,
       outputFormat,
       quality,
-      sourceImages: sourceImages.length > 0 ? sourceImages : undefined,
+      sourceImages,
+      brandsList: imageSettings.settings.brandsList
     });
   };
 
@@ -251,28 +296,24 @@ export function ImageOverlay({
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newFiles: File[] = Array.from(e.target.files);
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
       const validFiles: File[] = [];
-      let errorOccurred = false;
       
-      // Validate each file
-      for (const file of newFiles) {
-        // Check file type
-        if (!file.type.match('image/(jpeg|png|webp)')) {
+      for (const file of files) {
+        // Validate file type
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
           toast.error("Invalid file type", {
-            description: `${file.name}: Please select JPG, PNG, or WebP images only`
+            description: `${file.name}: Only JPEG, PNG, and WebP images are supported`
           });
-          errorOccurred = true;
           continue;
         }
         
-        // Check file size (25MB max for gpt-image-1)
+        // Validate file size
         if (file.size > 25 * 1024 * 1024) {
           toast.error("File too large", {
             description: `${file.name}: Images must be less than 25MB`
           });
-          errorOccurred = true;
           continue;
         }
         
@@ -319,7 +360,10 @@ export function ImageOverlay({
         "w-full max-w-4xl transition-all duration-200 ease-in-out pointer-events-auto",
         expanded ? "mb-6" : "mb-2"
       )}>
-        <div className="backdrop-blur-sm bg-black/40 rounded-xl p-4 shadow-lg border border-white/10">
+        <div className={cn(
+          "rounded-xl p-4 shadow-lg border",
+          getOverlayBgColor()
+        )}>
           <div className="flex flex-col space-y-4">
             {/* Image thumbnails row */}
             {sourceImages.length > 0 && (
@@ -331,15 +375,20 @@ export function ImageOverlay({
                       alt={`Image ${index + 1}`} 
                       className="w-12 h-12 object-cover rounded-md border border-gray-500/30"
                     />
-                    <button 
+                    <Button 
                       onClick={() => handleRemoveImage(index)}
-                      className="absolute -top-2 -right-2 bg-black/70 rounded-full p-0.5 text-white hover:bg-black"
+                      className={cn(
+                        "absolute -top-2 -right-2 rounded-full p-0.5 hover:bg-black",
+                        isDarkTheme ? "bg-black/70 text-white" : "bg-white/90 text-gray-700"
+                      )}
                       disabled={isGenerating}
                       aria-label="Remove image"
                       title="Remove image"
+                      variant="ghost"
+                      size="icon"
                     >
                       <X className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
                 {sourceImages.length > 1 && (
@@ -347,7 +396,11 @@ export function ImageOverlay({
                     variant="ghost"
                     size="sm"
                     onClick={handleClearAllImages}
-                    className="text-white/70 hover:text-white hover:bg-white/10 text-xs"
+                    className={cn(
+                      "text-xs",
+                      getMutedTextColor(),
+                      getHoverBgColor()
+                    )}
                     disabled={isGenerating}
                   >
                     Clear all
@@ -358,20 +411,33 @@ export function ImageOverlay({
             
             {/* Input row with buttons */}
             <div className="flex items-start gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setExpanded(!expanded)}
-                aria-label="Toggle options"
-                className="text-white/70 hover:text-white hover:bg-white/10 mt-1"
-                disabled={isGenerating}
-              >
-                {expanded ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Settings className="h-5 w-5" />
-                )}
-              </Button>
+              <TooltipProvider>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setExpanded(!expanded)}
+                      aria-label="Toggle options"
+                      className={cn(
+                        "mt-1",
+                        getMutedTextColor(),
+                        getHoverBgColor()
+                      )}
+                      disabled={isGenerating}
+                    >
+                      {expanded ? (
+                        <X className="h-5 w-5" />
+                      ) : (
+                        <Settings className="h-5 w-5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="font-medium">
+                    <p>{expanded ? "Hide settings" : "Show settings"}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               
               <TooltipProvider>
                 <Tooltip delayDuration={300}>
@@ -385,13 +451,17 @@ export function ImageOverlay({
                         }
                       }}
                       aria-label="Upload images"
-                      className="text-white/70 hover:text-white hover:bg-white/10 mt-1"
+                      className={cn(
+                        "mt-1",
+                        getMutedTextColor(),
+                        getHoverBgColor()
+                      )}
                       disabled={isGenerating}
                     >
                       <PlusCircle className="h-5 w-5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="font-medium">
+                  <TooltipContent side="left" className="font-medium">
                     <p>Upload images to edit (max 5)</p>
                   </TooltipContent>
                 </Tooltip>
@@ -418,7 +488,11 @@ export function ImageOverlay({
                     }
                   }}
                   placeholder={sourceImages.length > 0 ? "Describe how to edit these images..." : "Describe your image..."}
-                  className="bg-black/30 border border-gray-500/30 focus-visible:ring-1 focus-visible:ring-white/20 text-white placeholder:text-white/50 min-h-[40px] max-h-[200px] resize-none px-3 py-2 overflow-y-auto"
+                  className={cn(
+                    "border border-gray-500/30 min-h-[40px] max-h-[200px] resize-none px-3 py-2 overflow-y-auto",
+                    getControlBgColor(),
+                    getTextColor()
+                  )}
                   disabled={isGenerating}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey && prompt.trim() && !isGenerating) {
@@ -449,7 +523,12 @@ export function ImageOverlay({
                         size="icon"
                         onClick={handleWizardEnhance}
                         aria-label="Enhance prompt"
-                        className="bg-white/10 border-0 hover:bg-white/20 text-white min-w-9 h-9"
+                        className={cn(
+                          "border-0 min-w-9 h-9",
+                          isDarkTheme 
+                            ? "bg-white/10 hover:bg-white/20 text-white" 
+                            : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                        )}
                         disabled={isGenerating || isWizardEnhancing || !prompt.trim()}
                       >
                         {isWizardEnhancing ? (
@@ -459,7 +538,7 @@ export function ImageOverlay({
                         )}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom" className="font-medium">
+                    <TooltipContent side="left" className="font-medium">
                       <p>Enhance your prompt with AI</p>
                     </TooltipContent>
                   </Tooltip>
@@ -468,7 +547,12 @@ export function ImageOverlay({
                 <Button
                   variant="outline"
                   onClick={handleSubmit}
-                  className="bg-white/10 border-0 hover:bg-white/20 text-white"
+                  className={cn(
+                    "border-0",
+                    isDarkTheme 
+                      ? "bg-white/10 hover:bg-white/20 text-white" 
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                  )}
                   disabled={isGenerating || !prompt.trim()}
                 >
                   {isGenerating ? (
@@ -484,7 +568,7 @@ export function ImageOverlay({
             {expanded && (
               <div className="flex flex-wrap items-center gap-3 pt-1">
                 <TooltipProvider>
-                  <div className="flex flex-wrap items-center gap-3 transition-all duration-200 ease-in-out opacity-100 translate-y-0">
+                  <div className="flex flex-wrap items-center gap-3 transition-all duration-200 ease-in-out opacity-100 translate-y-0 w-full">
                     <Tooltip delayDuration={300}>
                       <TooltipTrigger asChild>
                         <div className="relative">
@@ -493,8 +577,14 @@ export function ImageOverlay({
                             onValueChange={setImageSize}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className="w-[120px] h-8 bg-black/30 border-0 text-white focus:ring-white/20">
-                              <SelectValue placeholder="1024x1024" />
+                            <SelectTrigger className={cn(
+                              "w-[145px] h-8",
+                              getControlBgColor()
+                            )}>
+                              <div className="flex items-center">
+                                <Maximize className="h-4 w-4 mr-2" />
+                                <SelectValue placeholder="1024x1024" />
+                              </div>
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="auto">Auto</SelectItem>
@@ -505,7 +595,7 @@ export function ImageOverlay({
                           </Select>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="font-medium">
+                      <TooltipContent side="right" className="font-medium">
                         <p>Select output image dimensions</p>
                       </TooltipContent>
                     </Tooltip>
@@ -519,7 +609,10 @@ export function ImageOverlay({
                             onValueChange={setBackground}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className="w-[140px] h-8 bg-black/30 border-0 text-white focus:ring-white/20">
+                            <SelectTrigger className={cn(
+                              "w-[140px] h-8",
+                              getControlBgColor()
+                            )}>
                               <div className="flex items-center">
                                 <Layers className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Background" />
@@ -533,7 +626,7 @@ export function ImageOverlay({
                           </Select>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="font-medium">
+                      <TooltipContent side="right" className="font-medium">
                         <p>Choose background transparency type</p>
                       </TooltipContent>
                     </Tooltip>
@@ -547,7 +640,10 @@ export function ImageOverlay({
                             onValueChange={setOutputFormat}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className="w-[100px] h-8 bg-black/30 border-0 text-white focus:ring-white/20">
+                            <SelectTrigger className={cn(
+                              "w-[100px] h-8",
+                              getControlBgColor()
+                            )}>
                               <div className="flex items-center">
                                 <FileType className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Format" />
@@ -563,7 +659,7 @@ export function ImageOverlay({
                           </Select>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="font-medium">
+                      <TooltipContent side="right" className="font-medium">
                         <p>Select image file format</p>
                       </TooltipContent>
                     </Tooltip>
@@ -577,7 +673,10 @@ export function ImageOverlay({
                             onValueChange={setQuality}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className="w-[110px] h-8 bg-black/30 border-0 text-white focus:ring-white/20">
+                            <SelectTrigger className={cn(
+                              "w-[120px] h-8",
+                              getControlBgColor()
+                            )}>
                               <div className="flex items-center">
                                 <BarChart4 className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Quality" />
@@ -592,7 +691,7 @@ export function ImageOverlay({
                           </Select>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="font-medium">
+                      <TooltipContent side="right" className="font-medium">
                         <p>Select image quality</p>
                       </TooltipContent>
                     </Tooltip>
@@ -605,7 +704,10 @@ export function ImageOverlay({
                             onValueChange={setVariations}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className="w-[80px] h-8 bg-black/30 border-0 text-white focus:ring-white/20">
+                            <SelectTrigger className={cn(
+                              "w-[80px] h-8",
+                              getControlBgColor()
+                            )}>
                               <div className="flex items-center">
                                 <Images className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="1" />
@@ -626,7 +728,7 @@ export function ImageOverlay({
                           </Select>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="font-medium">
+                      <TooltipContent side="right" className="font-medium">
                         <p>Number of image variations to generate</p>
                       </TooltipContent>
                     </Tooltip>
@@ -646,7 +748,10 @@ export function ImageOverlay({
                               }
                             }}
                           >
-                            <SelectTrigger className="w-[150px] h-8 bg-black/30 border-0 text-white focus:ring-white/20">
+                            <SelectTrigger className={cn(
+                              "w-[150px] h-8",
+                              getControlBgColor()
+                            )}>
                               <div className="flex items-center">
                                 <FolderTree className="h-4 w-4 mr-2 text-primary" />
                                 <SelectValue placeholder="Root folder" />
@@ -722,71 +827,57 @@ export function ImageOverlay({
                           </Select>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="font-medium">
+                      <TooltipContent side="right" className="font-medium">
                         <p>Storage location for generated image files</p>
                       </TooltipContent>
                     </Tooltip>
 
-                    <ToggleGroup 
-                      type="multiple" 
-                      size="lg"
-                      className="flex space-x-1"
-                      value={[
-                        ...(saveImages ? ["saveImages"] : []), 
-                        ...(aiAnalysisEnabled ? ["aiAnalysis"] : [])
-                      ]}
-                      onValueChange={(value) => {
-                        setSaveImages(value.includes("saveImages"));
-                        setAiAnalysisEnabled(value.includes("aiAnalysis"));
-                      }}
-                      disabled={isGenerating}
-                    >
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
+                    {/* AI Analysis Toggle Button */}
+                    <Tooltip delayDuration={300}>
+                      <TooltipTrigger asChild>
+                        <ToggleGroup 
+                          type="single" 
+                          size="lg"
+                          value={aiAnalysisEnabled ? "analyze" : ""}
+                          onValueChange={(value) => {
+                            setAiAnalysisEnabled(value === "analyze");
+                          }}
+                          disabled={isGenerating}
+                        >
                           <ToggleGroupItem 
-                            value="saveImages" 
-                            aria-label="Toggle saving images"
+                            value="analyze" 
+                            aria-label="Toggle analysis"
+                            className={cn(
+                              "rounded-md",
+                              isDarkTheme ? "bg-black/30 border-0 text-white" : "bg-white/50 border-gray-200 text-gray-900"
+                            )}
                             style={{
-                              backgroundColor: saveImages ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.3)",
-                              border: saveImages ? "1px solid rgba(255, 255, 255, 0.4)" : "1px solid rgba(255, 255, 255, 0.1)",
-                              color: saveImages ? "white" : "rgba(255, 255, 255, 0.6)",
-                              borderRadius: "0.375rem",
-                              padding: "0.25rem",
-                              width: "2.5rem",
-                              height: "2.5rem",
+                              backgroundColor: aiAnalysisEnabled 
+                                ? (isDarkTheme ? "rgba(255, 255, 255, 0.15)" : "rgba(209, 213, 219, 0.5)") 
+                                : (isDarkTheme ? "rgba(0, 0, 0, 0.3)" : "rgba(255, 255, 255, 0.5)"),
+                              border: aiAnalysisEnabled 
+                                ? (isDarkTheme ? "1px solid rgba(255, 255, 255, 0.3)" : "1px solid rgba(209, 213, 219, 0.5)") 
+                                : (isDarkTheme ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(229, 231, 235, 0.5)"),
+                              color: aiAnalysisEnabled 
+                                ? (isDarkTheme ? "white" : "rgb(17, 24, 39)") 
+                                : (isDarkTheme ? "rgba(255, 255, 255, 0.6)" : "rgb(107, 114, 128)"),
+                              padding: "0.5rem",
+                              minWidth: "auto",
+                              width: "40px",
+                              height: "32px",
+                              display: "flex",
+                              justifyContent: "center",
+                              alignItems: "center"
                             }}
                           >
-                            <Save className="h-4 w-4" />
+                            <Eye className={`h-4 w-4 ${aiAnalysisEnabled ? (isDarkTheme ? "text-white" : "text-gray-900") : ""}`} />
                           </ToggleGroupItem>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="font-medium">
-                          <p>Save generated images to storage</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
-                          <ToggleGroupItem 
-                            value="aiAnalysis" 
-                            aria-label="Toggle AI Analysis"
-                            style={{
-                              backgroundColor: aiAnalysisEnabled ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.3)",
-                              border: aiAnalysisEnabled ? "1px solid rgba(255, 255, 255, 0.4)" : "1px solid rgba(255, 255, 255, 0.1)",
-                              color: aiAnalysisEnabled ? "white" : "rgba(255, 255, 255, 0.6)",
-                              borderRadius: "0.375rem",
-                              padding: "0.25rem",
-                              width: "2.5rem",
-                              height: "2.5rem",
-                            }}
-                          >
-                            <CloudCog className="h-4 w-4" />
-                          </ToggleGroupItem>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="font-medium">
-                          <p>Enable AI analysis of generated images</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroup>
+                        </ToggleGroup>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="font-medium">
+                        <p>Analyze images for automatic tagging and summary</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </TooltipProvider>
               </div>

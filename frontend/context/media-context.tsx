@@ -10,6 +10,18 @@ interface MediaContextType {
   effectiveConnectionType: string;
 }
 
+// Interface for Navigator with connection property
+interface NavigatorWithConnection extends Navigator {
+  connection?: {
+    downlink: number;
+    effectiveType: string;
+    saveData: boolean;
+    type: string;
+    addEventListener: (event: string, listener: () => void) => void;
+    removeEventListener: (event: string, listener: () => void) => void;
+  };
+}
+
 const defaultMediaContext: MediaContextType = {
   screenWidth: typeof window !== 'undefined' ? window.innerWidth : 1920,
   screenHeight: typeof window !== 'undefined' ? window.innerHeight : 1080,
@@ -38,8 +50,9 @@ export function MediaProvider({ children }: { children: ReactNode }) {
     
     // Check network conditions
     const updateConnectionInfo = () => {
-      if ('connection' in navigator) {
-        const connection = (navigator as any).connection;
+      const navigatorWithConnection = navigator as NavigatorWithConnection;
+      if (navigatorWithConnection.connection) {
+        const connection = navigatorWithConnection.connection;
         
         setMediaContext(prev => ({
           ...prev,
@@ -55,8 +68,9 @@ export function MediaProvider({ children }: { children: ReactNode }) {
     
     // Add event listeners
     window.addEventListener('resize', handleResize);
-    if ('connection' in navigator) {
-      (navigator as any).connection.addEventListener('change', updateConnectionInfo);
+    const navigatorWithConnection = navigator as NavigatorWithConnection;
+    if (navigatorWithConnection.connection) {
+      navigatorWithConnection.connection.addEventListener('change', updateConnectionInfo);
     }
     
     // Initial check
@@ -65,8 +79,9 @@ export function MediaProvider({ children }: { children: ReactNode }) {
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
-      if ('connection' in navigator) {
-        (navigator as any).connection.removeEventListener('change', updateConnectionInfo);
+      const navigatorWithConnection = navigator as NavigatorWithConnection;
+      if (navigatorWithConnection.connection) {
+        navigatorWithConnection.connection.removeEventListener('change', updateConnectionInfo);
       }
     };
   }, []);

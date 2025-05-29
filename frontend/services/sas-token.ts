@@ -1,7 +1,9 @@
 import { API_BASE_URL } from './api';
 
 interface SasTokens {
+  videoSasToken: string;
   imageSasToken: string;
+  videoContainerUrl: string;
   imageContainerUrl: string;
   expiry: Date;
 }
@@ -42,12 +44,15 @@ class SasTokenService {
   /**
    * Get a direct URL to a blob with the appropriate SAS token
    * @param blobName Blob name including any folder path
+   * @param isVideo Whether this is a video (true) or image (false)
    * @returns Promise resolving to the full URL with SAS token
    */
-  async getBlobUrl(blobName: string): Promise<string> {
+  async getBlobUrl(blobName: string, isVideo: boolean): Promise<string> {
     try {
       const tokens = await this.getTokens();
-      return `${tokens.imageContainerUrl}/${blobName}?${tokens.imageSasToken}`;
+      const containerUrl = isVideo ? tokens.videoContainerUrl : tokens.imageContainerUrl;
+      const sasToken = isVideo ? tokens.videoSasToken : tokens.imageSasToken;
+      return `${containerUrl}/${blobName}?${sasToken}`;
     } catch (error) {
       console.error("Failed to get SAS token for blob:", error);
       throw error;
@@ -61,12 +66,17 @@ class SasTokenService {
     try {
       console.log("Fetching new SAS tokens...");
       const response = await fetch(`${API_BASE_URL}/gallery/sas-tokens`);
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch SAS tokens: ${response.status}`);
       }
+      
       const data = await response.json();
+      
       return {
+        videoSasToken: data.video_sas_token,
         imageSasToken: data.image_sas_token,
+        videoContainerUrl: data.video_container_url,
         imageContainerUrl: data.image_container_url,
         expiry: new Date(data.expiry)
       };

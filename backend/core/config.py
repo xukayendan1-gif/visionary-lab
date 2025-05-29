@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     # Model Provider Configuration
     MODEL_PROVIDER: str = "azure"  # Can be 'azure' or 'openai'
 
+    # Azure OpenAI for Sora Video Generation
+    SORA_AOAI_RESOURCE: str  # The Azure OpenAI resource name for Sora
+    SORA_DEPLOYMENT: str     # The Sora deployment name
+    SORA_AOAI_API_KEY: str   # The Azure OpenAI API key for Sora
+
     # Azure OpenAI for LLM
     # The Azure OpenAI resource name for LLM
     LLM_AOAI_RESOURCE: Optional[str] = None
@@ -44,6 +49,7 @@ class Settings(BaseSettings):
 
     # Container names
     AZURE_BLOB_IMAGE_CONTAINER: str = "images"  # Container name for images
+    AZURE_BLOB_VIDEO_CONTAINER: str = "videos"  # Container name for videos
 
     # Azure OpenAI API Version
     # API version for Azure OpenAI services
@@ -63,7 +69,7 @@ class Settings(BaseSettings):
     GPT_IMAGE_MAX_FILE_SIZE_MB: int = 25
 
     class Config:
-        env_file = ".env"
+        env_file = "../.env"
         case_sensitive = True
         extra = Extra.allow
 
