@@ -854,7 +854,7 @@ export function VideoDetailView({
                     </svg>
                     Analysis
                   </h3>
-                  {!analysisResult && (
+                  {!analysisResult && !video.analysis?.analyzed && (
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -874,37 +874,39 @@ export function VideoDetailView({
                   )}
                 </div>
                 
-                {analysisResult ? (
+                {/* Show analysis from metadata first, then from analysisResult state */}
+                {(video.analysis?.analyzed || analysisResult) ? (
                   <div className="space-y-4 text-sm">
-                    {analysisResult.summary && (
+                    {/* Use metadata analysis if available, otherwise use analysisResult */}
+                    {(video.analysis?.summary || analysisResult?.summary) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-1">Summary</h4>
-                        <p className="text-sm">{analysisResult.summary}</p>
+                        <p className="text-sm">{video.analysis?.summary || analysisResult?.summary}</p>
                       </div>
                     )}
                     
-                    {analysisResult.products && (
+                    {(video.analysis?.products || analysisResult?.products) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-1">Products/Brands</h4>
-                        <p className="text-sm">{analysisResult.products}</p>
+                        <p className="text-sm">{video.analysis?.products || analysisResult?.products}</p>
                       </div>
                     )}
                     
-                    {analysisResult.tags && analysisResult.tags.length > 0 && (
+                    {((video.analysis?.tags && video.analysis.tags.length > 0) || (analysisResult?.tags && analysisResult.tags.length > 0)) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-2">AI Tags</h4>
                         <div className="flex flex-wrap gap-2">
-                          {analysisResult.tags.map((tag, index) => (
+                          {(video.analysis?.tags || analysisResult?.tags || []).map((tag, index) => (
                             <Badge key={index} variant="outline" className="bg-background">{tag}</Badge>
                           ))}
                         </div>
                       </div>
                     )}
                     
-                    {analysisResult.feedback && (
+                    {(video.analysis?.feedback || analysisResult?.feedback) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-1">Feedback</h4>
-                        <p className="text-sm">{analysisResult.feedback}</p>
+                        <p className="text-sm">{video.analysis?.feedback || analysisResult?.feedback}</p>
                       </div>
                     )}
                   </div>

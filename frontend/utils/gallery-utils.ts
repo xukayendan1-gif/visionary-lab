@@ -13,6 +13,14 @@ export interface VideoMetadata {
   originalItem: GalleryItem;
   width?: number;
   height?: number;
+  // Analysis metadata from Azure Blob Storage
+  analysis?: {
+    summary?: string;
+    products?: string;
+    tags?: string[];
+    feedback?: string;
+    analyzed?: boolean;
+  };
 }
 
 /**
@@ -37,6 +45,29 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
     src = `${API_BASE_URL}/gallery/asset/${item.media_type}/${item.name}`;
   }
   
+  // Extract analysis metadata if available
+  let analysis: VideoMetadata['analysis'] = undefined;
+  if (item.metadata) {
+    const hasAnalysis = item.metadata.summary || item.metadata.products || item.metadata.tags || item.metadata.feedback;
+    if (hasAnalysis) {
+      analysis = {
+        summary: item.metadata.summary as string,
+        products: item.metadata.products as string,
+        feedback: item.metadata.feedback as string,
+        analyzed: item.metadata.analyzed === 'true' || item.metadata.analyzed === true,
+      };
+      
+      // Parse tags from metadata - they might be stored as comma-separated string
+      if (item.metadata.tags) {
+        if (typeof item.metadata.tags === 'string') {
+          analysis.tags = item.metadata.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+        } else if (Array.isArray(item.metadata.tags)) {
+          analysis.tags = item.metadata.tags;
+        }
+      }
+    }
+  }
+
   return {
     id: item.id,
     name: item.name,
@@ -46,6 +77,7 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
     // We'll assign the size later in a structured way
     size: "medium", // Default size, will be overridden
     originalItem: item,
+    analysis,
   };
 }
 

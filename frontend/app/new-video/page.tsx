@@ -571,7 +571,9 @@ function NewVideoPageContent() {
             aspectRatio: settings.aspectRatio,
             fps: undefined, // Optional
             brandsProtection: settings.brandsProtection,
-            brandsList: settings.brandsList
+            brandsList: settings.brandsList,
+            analyzeVideo: settings.analyzeVideo, // Pass the analysis setting
+            mode: settings.mode // Pass the mode setting
           };
           
           // Add to queue - this will create the job in the backend

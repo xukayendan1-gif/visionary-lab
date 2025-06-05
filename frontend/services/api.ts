@@ -738,6 +738,22 @@ export interface VideoAnalysisResponse {
   feedback: string;
 }
 
+export interface VideoGenerationWithAnalysisRequest {
+  prompt: string;
+  n_variants: number;
+  n_seconds: number;
+  height: number;
+  width: number;
+  analyze_video: boolean;
+  metadata?: Record<string, string>;
+}
+
+export interface VideoGenerationWithAnalysisResponse {
+  job: VideoGenerationJob;
+  analysis_results?: VideoAnalysisResponse[];
+  upload_results?: Array<{[key: string]: string}>;
+}
+
 /**
  * Analyze a video using AI
  */
@@ -1574,6 +1590,46 @@ export async function protectImagePrompt(
     // If there's an error, return the original prompt
     return prompt;
   }
+}
+
+/**
+ * Create a video generation job with optional analysis in one atomic operation
+ */
+export async function createVideoGenerationWithAnalysis(request: VideoGenerationWithAnalysisRequest): Promise<VideoGenerationWithAnalysisResponse> {
+  const url = `${API_BASE_URL}/videos/generate-with-analysis`;
+  
+  if (DEBUG) {
+    console.log(`Creating video generation with analysis: ${request.prompt}`);
+    console.log(`POST ${url}`);
+    console.log('Request:', request);
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (DEBUG) {
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to create video generation with analysis: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  
+  if (DEBUG) {
+    console.log('Response data:', data);
+  }
+  
+  return data;
 }
 
 /**
