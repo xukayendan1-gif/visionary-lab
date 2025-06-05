@@ -259,9 +259,6 @@ class AzureBlobStorageService:
             # Determine container based on asset type
             container_name = self.image_container if asset_type == "image" else self.video_container
 
-            # Generate a unique ID for the file
-            file_id = str(uuid.uuid4())
-
             # Get file extension and determine content type
             _, ext = os.path.splitext(file.filename)
             content_type = self._get_content_type(ext, asset_type)
@@ -269,14 +266,33 @@ class AzureBlobStorageService:
             # Normalize folder path
             normalized_folder_path = self.normalize_folder_path(folder_path)
 
-            # Create blob name with optional folder path and UUID
-            blob_name = f"{normalized_folder_path}{file_id}{ext}"
+            # Use the provided filename if available, otherwise generate UUID
+            if file.filename and file.filename.strip():
+                # Remove the extension from the filename to avoid double extensions
+                filename_without_ext = os.path.splitext(file.filename)[0]
+                # Create blob name with the provided filename
+                blob_name = f"{normalized_folder_path}{filename_without_ext}{ext}"
+                file_id = filename_without_ext  # For backward compatibility in response
+                # Check if blob already exists and handle conflicts
+                container_client = self.blob_service_client.get_container_client(
+                    container_name)
+                blob_client = container_client.get_blob_client(blob_name)
 
-            # Get container client
-            container_client = self.blob_service_client.get_container_client(
-                container_name)
+                # If blob exists, append a UUID suffix to make it unique
+                if blob_client.exists():
+                    # Use first 8 chars of UUID
+                    unique_suffix = str(uuid.uuid4())[:8]
+                    blob_name = f"{normalized_folder_path}{filename_without_ext}_{unique_suffix}{ext}"
+                    file_id = f"{filename_without_ext}_{unique_suffix}"
+            else:
+                # Fallback to UUID if no filename provided
+                file_id = str(uuid.uuid4())
+                blob_name = f"{normalized_folder_path}{file_id}{ext}"
 
-            # Create blob client
+            # Create blob client (container_client already created above for conflict checking)
+            if 'container_client' not in locals():
+                container_client = self.blob_service_client.get_container_client(
+                    container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Set content settings
@@ -323,9 +339,6 @@ class AzureBlobStorageService:
                 "folder_path": normalized_folder_path
             }
         except Exception as e:
-            import traceback
-            print(f"Azure upload error: {str(e)}")
-            print(f"Error trace: {traceback.format_exc()}")
             raise
 
     def get_asset_metadata(self, blob_name: str, container_name: str) -> Optional[Dict[str, str]]:
@@ -385,9 +398,6 @@ class AzureBlobStorageService:
         except ResourceNotFoundError:
             return False
         except Exception as e:
-            import traceback
-            print(f"Metadata update error: {str(e)}")
-            print(f"Error trace: {traceback.format_exc()}")
             return False
 
     def _get_content_type(self, extension: str, asset_type: str) -> str:
@@ -532,5 +542,4 @@ class AzureBlobStorageService:
             # Convert to sorted list
             return sorted(list(folders))
         except Exception as e:
-            print(f"Error listing folders: {str(e)}")
             return []

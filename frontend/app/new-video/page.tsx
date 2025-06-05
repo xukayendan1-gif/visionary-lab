@@ -173,7 +173,6 @@ function NewVideoPageContent() {
   useEffect(() => {
     // Create a callback function to refresh the gallery
     const refreshGalleryCallback = () => {
-      console.log("Gallery refresh callback triggered, reloading videos");
       // Check if we're already loading to avoid duplicate refreshes
       if (!loading && !isRefreshing) {
         loadVideos(true, true);
@@ -292,26 +291,10 @@ function NewVideoPageContent() {
       setTimeout(() => {
         // Don't refresh unnecessarily if we just refreshed or are loading
         if (!loading && !isRefreshing) {
-          console.log("Videos uploaded - refreshing gallery");
-          
           // Do a full refresh of the gallery
           loadVideos(true);
           
-          // Show success notification after videos load
-          toast.success(`Videos added to gallery`, {
-            description: "Your videos are now visible in the gallery",
-            duration: 3000,
-            action: {
-              label: "View",
-              onClick: () => {
-                // Scroll to the top of the gallery to show new content
-                const galleryContainer = document.querySelector('.gallery-container');
-                if (galleryContainer) {
-                  galleryContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }
-            }
-          });
+          // Don't show additional toast here - the video queue context already shows success notification
         }
       }, 1000);
     }
@@ -321,9 +304,9 @@ function NewVideoPageContent() {
   // and can be refreshed manually or with auto-refresh
   
   // Function to handle video deletion
-  const handleVideoDeleted = (deletedVideoId: string) => {
-    // Remove the deleted video from the state
-    setVideos(prevVideos => prevVideos.filter(video => video.id !== deletedVideoId));
+  const handleVideoDeleted = (deletedVideoName: string) => {
+    // Remove the deleted video from the state using the unique video name (blob name)
+    setVideos(prevVideos => prevVideos.filter(video => video.name !== deletedVideoName));
     
     // If we've deleted a video, we might want to load another one to replace it
     if (hasMore && videos.length < limit * 2) {
@@ -356,7 +339,12 @@ function NewVideoPageContent() {
 
   // Function to generate sample tags for videos
   const generateTagsForVideo = (video: VideoMetadata, index: number): string[] => {
-    // If the video already has tags, use those
+    // First, check if we have real analysis tags
+    if (video.analysis?.tags && video.analysis.tags.length > 0) {
+      return video.analysis.tags;
+    }
+    
+    // If the video already has tags from other sources, use those
     if (video.tags && video.tags.length > 0) {
       return video.tags;
     }
@@ -373,44 +361,8 @@ function NewVideoPageContent() {
       }
     }
     
-    // A pool of potential tags
-    const tagPool = [
-      "AI Generated", "Landscape", "Portrait", "Nature", "Urban", 
-      "Abstract", "People", "Architecture", "Animals", "Technology",
-      "Cinematic", "Outdoors", "Indoor", "Animation", "Experimental"
-    ];
-    
-    // Deterministic selection based on the video properties
-    const selectedTags: string[] = [];
-    
-    // Add "AI Generated" tag to all videos
-    selectedTags.push("AI Generated");
-    
-    // Add orientation tags based on title or description
-    if (video.title.toLowerCase().includes("landscape") || 
-        (video.description && video.description.toLowerCase().includes("landscape"))) {
-      selectedTags.push("Landscape");
-    } else if (video.title.toLowerCase().includes("portrait") || 
-              (video.description && video.description.toLowerCase().includes("portrait"))) {
-      selectedTags.push("Portrait");
-    } else {
-      // Use the index to select a tag if none found in title/description
-      selectedTags.push(index % 2 === 0 ? "Landscape" : "Portrait");
-    }
-    
-    // Add a content tag based on index
-    const contentIndex = (index * 3) % (tagPool.length - 2) + 2; // Skip the first two tags (AI Generated & Landscape/Portrait)
-    selectedTags.push(tagPool[contentIndex]);
-    
-    // Randomly add an extra tag for some videos
-    if (index % 3 === 0) {
-      const extraIndex = (index * 7) % (tagPool.length - 2) + 2;
-      if (tagPool[extraIndex] && !selectedTags.includes(tagPool[extraIndex])) {
-        selectedTags.push(tagPool[extraIndex]);
-      }
-    }
-    
-    return selectedTags;
+    // If no real tags are available, return empty array instead of dummy tags
+    return [];
   };
 
   // Group videos into columns for masonry layout
@@ -480,7 +432,6 @@ function NewVideoPageContent() {
     variants: string;
     modality: string;
     analyzeVideo: boolean;
-    mode: string;
     brandsProtection: string;
     imageModel: string;
     hd: boolean;
@@ -503,21 +454,17 @@ function NewVideoPageContent() {
     
     setIsGenerating(true);
     
+    // Show immediate feedback to the user
+    const toastId = toast.loading(`Creating ${settings.variants} video${parseInt(settings.variants) > 1 ? 's' : ''}...`, {
+      description: `${settings.aspectRatio}, ${settings.duration} duration - this may take 1-2 minutes`
+    });
+    
     try {
       let generationPrompt = settings.prompt;
+      let brandProtectionApplied = false;
       
       // Apply brand protection if enabled from global settings
       if (imageSettings.settings.brandsProtection !== "off" && imageSettings.settings.brandsList.length > 0) {
-        // Log that protection is active
-        console.log("🛡️ Brand Protection Activated:", {
-          mode: imageSettings.settings.brandsProtection,
-          brands: imageSettings.settings.brandsList
-        });
-        
-        toast.info("Brand protection activated", {
-          description: `Applying ${imageSettings.settings.brandsProtection} protection for ${imageSettings.settings.brandsList.length} brand${imageSettings.settings.brandsList.length > 1 ? 's' : ''}...`
-        });
-        
         try {
           // Call the brand protection API
           generationPrompt = await protectImagePrompt(
@@ -526,41 +473,18 @@ function NewVideoPageContent() {
             imageSettings.settings.brandsProtection
           );
           
-          // Log the resulting prompt
           if (generationPrompt !== settings.prompt) {
-            console.log("Original prompt:", settings.prompt);
-            console.log("Protected prompt:", generationPrompt);
-            
-            toast.success("Brand protection applied", {
-              description: "The prompt has been modified for brand safety"
-            });
-          } else {
-            toast.info("Brand protection processed", {
-              description: "No changes were needed to protect the specified brands"
-            });
+            brandProtectionApplied = true;
           }
         } catch (error) {
           console.error('Error applying brand protection:', error);
-          toast.error("Brand protection failed", {
-            description: "Using original prompt instead"
-          });
-          // Fallback to original prompt on error
+          // Don't show a separate error toast for brand protection - just log and continue
+          // The main generation will still proceed with the original prompt
           generationPrompt = settings.prompt;
         }
       }
       
-      // Show generation started toast
-      toast(`Starting ${settings.modality} generation with your prompt...`);
-      
-      if (settings.mode === "dev") {
-        // In dev mode, just simulate generation
-        setTimeout(() => {
-          setIsGenerating(false);
-          toast.success(`Your ${settings.modality} has been generated`, {
-            description: "Development mode is using placeholder videos."
-          });
-        }, 3000);
-      } else {
+      {
         // For real video generation
         try {
           // Convert string values to numbers for type compatibility
@@ -573,7 +497,7 @@ function NewVideoPageContent() {
             brandsProtection: settings.brandsProtection,
             brandsList: settings.brandsList,
             analyzeVideo: settings.analyzeVideo, // Pass the analysis setting
-            mode: settings.mode // Pass the mode setting
+            folder: settings.folder // Pass the folder setting
           };
           
           // Add to queue - this will create the job in the backend
@@ -585,29 +509,8 @@ function NewVideoPageContent() {
             [jobId]: true
           }));
           
-          // Show detailed toast about the generation process
-          toast.success("Video generation queued", {
-            description: `Creating ${videoSettings.variants} video variant${videoSettings.variants > 1 ? 's' : ''} with ${videoSettings.aspectRatio} aspect ratio`,
-            duration: 5000,
-            action: {
-              label: "View Status",
-              onClick: () => {
-                // Scroll to the top to show the active generation badge
-                const galleryContainer = document.querySelector('.gallery-container');
-                if (galleryContainer) {
-                  galleryContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }
-            }
-          });
-          
-          // Provide info about when to expect results
-          setTimeout(() => {
-            toast.info("Video generation in progress", {
-              description: `This will take about 1-2 minutes. The gallery will automatically update when done.`,
-              duration: 8000
-            });
-          }, 2000);
+          // Dismiss the loading toast - the job is now in progress
+          toast.dismiss(toastId);
           
           // No need to reset lastCompletedJobId now that we're tracking in jobsInProgress
           
@@ -616,6 +519,7 @@ function NewVideoPageContent() {
         } catch (error) {
           console.error("Error starting video generation:", error);
           toast.error("Could not connect to the backend API", {
+            id: toastId,
             description: "Please try again later"
           });
           setIsGenerating(false);
@@ -625,6 +529,7 @@ function NewVideoPageContent() {
       console.error("Error during generation:", error);
       setIsGenerating(false);
       toast.error("An error occurred while generating the video", {
+        id: toastId,
         description: "Please try again later"
       });
     }
@@ -807,7 +712,7 @@ function NewVideoPageContent() {
                       const isLarge = (videoIndex * 3 + columnIndex) % 5 === 0;
                       
                       return (
-                        <div key={video.id} className="w-full">
+                        <div key={video.name} className="w-full">
                           <VideoCard
                             src={video.src}
                             title={video.title}
@@ -817,7 +722,7 @@ function NewVideoPageContent() {
                             tags={sampleTags}
                             id={video.id}
                             blobName={video.name}
-                            onDelete={() => handleVideoDeleted(video.id)}
+                            onDelete={() => handleVideoDeleted(video.name)}
                             onClick={() => handleVideoClick(video)}
                             autoPlay={autoPlay}
                           />
