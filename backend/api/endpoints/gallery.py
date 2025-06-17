@@ -475,45 +475,46 @@ async def update_asset_metadata(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/asset/{media_type}/{blob_name:path}")
-async def get_asset_content(
-    media_type: MediaType,
-    blob_name: str,
-    azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService())
-):
-    """
-    Stream asset content (image or video) directly from Azure Blob Storage
-
-    This endpoint acts as a proxy to bypass CORS restrictions and authentication requirements
-    for Azure Blob Storage assets.
-
-    The blob_name parameter can include folder paths. 
-    For example: folder/subfolder/image.jpg
-    """
-    try:
-        # Determine container name based on media type
-        container_name = settings.AZURE_BLOB_IMAGE_CONTAINER if media_type == MediaType.IMAGE else settings.AZURE_BLOB_VIDEO_CONTAINER
-
-        # Get the asset content
-        content, content_type = azure_storage_service.get_asset_content(
-            blob_name, container_name)
-
-        if not content:
-            raise HTTPException(
-                status_code=404, detail=f"Asset not found: {blob_name}")
-
-        # Get just the filename without the folder path for the Content-Disposition header
-        filename = blob_name.split('/')[-1] if '/' in blob_name else blob_name
-
-        # Return the content as a streaming response
-        return StreamingResponse(
-            content=io.BytesIO(content),
-            media_type=content_type,
-            headers={"Content-Disposition": f"inline; filename={filename}"}
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.get("/asset/{media_type}/{blob_name:path}")
+# async def get_asset_content(
+#     media_type: MediaType,
+#     blob_name: str,
+#     azure_storage_service: AzureBlobStorageService = Depends(
+#         lambda: AzureBlobStorageService())
+# ):
+#     """
+#     Stream asset content (image or video) directly from Azure Blob Storage
+#
+#     DEPRECATED: This endpoint is disabled. Use direct SAS token access instead.
+#     This endpoint previously acted as a proxy to bypass CORS restrictions and authentication requirements
+#     for Azure Blob Storage assets.
+#
+#     The blob_name parameter can include folder paths.
+#     For example: folder/subfolder/image.jpg
+#     """
+#     try:
+#         # Determine container name based on media type
+#         container_name = settings.AZURE_BLOB_IMAGE_CONTAINER if media_type == MediaType.IMAGE else settings.AZURE_BLOB_VIDEO_CONTAINER
+#
+#         # Get the asset content
+#         content, content_type = azure_storage_service.get_asset_content(
+#             blob_name, container_name)
+#
+#         if not content:
+#             raise HTTPException(
+#                 status_code=404, detail=f"Asset not found: {blob_name}")
+#
+#         # Get just the filename without the folder path for the Content-Disposition header
+#         filename = blob_name.split('/')[-1] if '/' in blob_name else blob_name
+#
+#         # Return the content as a streaming response
+#         return StreamingResponse(
+#             content=io.BytesIO(content),
+#             media_type=content_type,
+#             headers={"Content-Disposition": f"inline; filename={filename}"}
+#         )
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/folders", response_model=Dict[str, Any])

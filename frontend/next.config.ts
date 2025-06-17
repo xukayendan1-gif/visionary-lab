@@ -28,14 +28,13 @@ const nextConfig: NextConfig = {
   // Optimize static generation
   trailingSlash: false,
   
-  // Image optimization configuration
+  // Image optimization configuration for Azure Blob Storage
   images: {
     remotePatterns: [
       {
-        protocol: API_PROTOCOL,
-        hostname: API_HOSTNAME,
-        port: API_PORT,
-        pathname: '/api/v1/gallery/asset/**',
+        protocol: 'https',
+        hostname: '*.blob.core.windows.net',
+        pathname: '/**',
       }
     ],
     // Image optimization settings
@@ -43,6 +42,8 @@ const nextConfig: NextConfig = {
     formats: ['image/webp', 'image/avif'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    // Enable unoptimized images for external URLs with query params (SAS tokens)
+    unoptimized: false,
   },
   
   experimental: {
@@ -109,16 +110,7 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      {
-        // Cache images with longer TTL
-        source: '/api/image/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=604800, s-maxage=2592000', // 1 week browser, 30 days CDN
-          },
-        ],
-      },
+
       {
         // Security headers
         source: '/(.*)',

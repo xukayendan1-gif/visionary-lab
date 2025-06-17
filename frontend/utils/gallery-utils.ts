@@ -33,17 +33,9 @@ async function mapGalleryItemToVideoMetadata(item: GalleryItem): Promise<VideoMe
   // Extract prompt from metadata - prioritize prompt over description
   const description = item.metadata?.prompt || item.metadata?.description || '';
   
-  let src: string;
-  
-  try {
-    // Try to get a direct URL with SAS token
-    src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
-    console.log(`Using direct blob URL for ${item.name}`);
-  } catch (error) {
-    console.warn("Failed to get SAS token URL, falling back to proxy:", error);
-    // Fallback to proxy URL
-    src = `${API_BASE_URL}/gallery/asset/${item.media_type}/${item.name}`;
-  }
+  // Get direct URL with SAS token
+  const src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
+  console.log(`Using direct blob URL for ${item.name}`);
   
   // Extract analysis metadata if available
   let analysis: VideoMetadata['analysis'] = undefined;
@@ -146,21 +138,9 @@ async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMe
     // Extract description from metadata
     const description = item.metadata?.description || '';
     
-    // Always use proxy URL for reliability and simplicity
-    const filename = item.name.split('/').pop() || item.name;
-    let src: string;
-    
-    if (item.folder_path && item.folder_path.trim() !== '') {
-      // If we have a folder path, construct the full path with folder
-      const folderSegments = item.folder_path.replace(/^\/|\/$/g, '').split('/');
-      const segments = [...folderSegments, filename];
-      src = `/api/image/${segments.join('/')}`;
-    } else {
-      // Without folder, use just the filename
-      src = `/api/image/${filename}`;
-    }
-    
-    console.log(`Mapped ${item.name} to ${src}`);
+    // Use direct SAS token URL (false for images, true for videos)
+    const src = await sasTokenService.getBlobUrl(item.name, false);
+    console.log(`Using direct blob URL for ${item.name}`);
     
     return {
       id: item.id,

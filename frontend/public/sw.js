@@ -58,9 +58,6 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/_next/static/')) {
     // Static assets - cache first with long TTL
     event.respondWith(cacheFirst(request, STATIC_CACHE));
-  } else if (url.pathname.startsWith('/api/image/')) {
-    // Images - cache first with medium TTL
-    event.respondWith(cacheFirst(request, IMAGE_CACHE, 7 * 24 * 60 * 60 * 1000)); // 7 days
   } else if (url.hostname.includes('.blob.core.windows.net')) {
     // Azure Blob Storage requests
     if (isVideoThumbnailOrPoster(url.pathname)) {

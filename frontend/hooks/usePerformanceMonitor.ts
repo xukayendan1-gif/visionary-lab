@@ -87,8 +87,8 @@ export function usePerformanceMonitor() {
     
     assetMetricsRef.current = resourceEntries
       .filter(entry => 
-        entry.name.includes('/api/image/') || 
         entry.name.includes('/_next/static/') ||
+        entry.name.includes('.blob.core.windows.net') ||
         entry.name.includes('.jpg') ||
         entry.name.includes('.png') ||
         entry.name.includes('.webp') ||
@@ -104,9 +104,13 @@ export function usePerformanceMonitor() {
 
   // Get asset type from URL
   const getAssetType = (url: string): string => {
-    if (url.includes('/api/image/')) return 'api-image';
     if (url.includes('/_next/static/js/')) return 'javascript';
     if (url.includes('/_next/static/css/')) return 'stylesheet';
+    if (url.includes('.blob.core.windows.net')) {
+      if (url.match(/\.(jpg|jpeg|png|webp|avif)/i)) return 'azure-image';
+      if (url.match(/\.(mp4|webm|mov)/i)) return 'azure-video';
+      return 'azure-blob';
+    }
     if (url.match(/\.(jpg|jpeg|png|webp|avif)$/i)) return 'image';
     if (url.match(/\.(mp4|webm|mov)$/i)) return 'video';
     return 'other';
@@ -180,7 +184,9 @@ export function usePerformanceMonitor() {
     }
 
     // Asset-specific recommendations
-    const imageAssets = assetMetricsRef.current.filter(asset => asset.type === 'image' || asset.type === 'api-image');
+    const imageAssets = assetMetricsRef.current.filter(asset => 
+      asset.type === 'image' || asset.type === 'azure-image'
+    );
     const slowImages = imageAssets.filter(asset => asset.loadTime > 2000);
     
     if (slowImages.length > 0) {

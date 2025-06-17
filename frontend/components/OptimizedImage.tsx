@@ -44,8 +44,9 @@ export const OptimizedImage = forwardRef<HTMLImageElement, OptimizedImageProps>(
     const finalPriority = priority !== undefined ? priority : loadingConfig.priority;
     const finalQuality = quality || loadingConfig.quality;
     
-    // Check if the image is from an external source
+    // Check if the image is from an external source or has SAS tokens
     const isExternal = isExternalImageUrl(src);
+    const hasSasToken = src.includes('?sv=') || src.includes('?sig=');
     
     // Handle image error
     const handleError = () => {
@@ -67,8 +68,8 @@ export const OptimizedImage = forwardRef<HTMLImageElement, OptimizedImageProps>(
       ? getFallbackImageUrl(width || 400, height || 300)
       : src;
     
-    // If it's an external image, use unoptimized
-    if (isExternal) {
+    // If it's an external image or has SAS tokens, use unoptimized
+    if (isExternal || hasSasToken) {
       return (
         <Image
           ref={ref}
@@ -88,7 +89,7 @@ export const OptimizedImage = forwardRef<HTMLImageElement, OptimizedImageProps>(
       );
     }
     
-    // For internal images, use optimized version
+    // For internal images without SAS tokens, use optimized version
     return (
       <Image
         ref={ref}
