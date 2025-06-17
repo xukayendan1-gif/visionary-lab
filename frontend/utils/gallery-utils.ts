@@ -139,115 +139,45 @@ export async function fetchVideos(
  * Convert GalleryItem to ImageMetadata
  */
 async function mapGalleryItemToImageMetadata(item: GalleryItem): Promise<ImageMetadata> {
-  // Extract title from metadata or name
-  const title = item.metadata?.title || item.name.split('.')[0].replace(/_/g, ' ');
-  
-  // Extract description from metadata
-  const description = item.metadata?.description || '';
-  
-  let src: string;
-  
-  // Extract just the filename without folder path
-  const filename = item.name.split('/').pop() || item.name;
-  
   try {
-    // Try to get a direct URL with SAS token for better performance
-    src = await sasTokenService.getBlobUrl(item.name, item.media_type === MediaType.VIDEO);
-    console.log(`Using direct blob URL for ${item.name}`);
-  } catch (error) {
-    console.warn("Failed to get SAS token URL for image, falling back to proxy:", error);
-  
-    // Fallback to proxy URL
-    if (item.folder_path) {
+    // Extract title from metadata or name
+    const title = item.metadata?.title || item.name.split('.')[0].replace(/_/g, ' ');
+    
+    // Extract description from metadata
+    const description = item.metadata?.description || '';
+    
+    // Always use proxy URL for reliability and simplicity
+    const filename = item.name.split('/').pop() || item.name;
+    let src: string;
+    
+    if (item.folder_path && item.folder_path.trim() !== '') {
       // If we have a folder path, construct the full path with folder
       const folderSegments = item.folder_path.replace(/^\/|\/$/g, '').split('/');
       const segments = [...folderSegments, filename];
-      // For catch-all route, use separate segments
       src = `/api/image/${segments.join('/')}`;
     } else {
       // Without folder, use just the filename
       src = `/api/image/${filename}`;
     }
+    
+    console.log(`Mapped ${item.name} to ${src}`);
+    
+    return {
+      id: item.id,
+      name: item.name,
+      src,
+      title: title.charAt(0).toUpperCase() + title.slice(1),
+      description: description,
+      width: undefined,
+      height: undefined,
+      tags: [],
+      size: "medium" as const,
+      originalItem: item,
+    };
+  } catch (error) {
+    console.error(`Error mapping gallery item ${item.id}:`, error);
+    throw error;
   }
-  
-  // Extract width and height from metadata if available
-  let width: number | undefined;
-  let height: number | undefined;
-  
-  // Try to extract dimensions from multiple potential metadata fields
-  if (item.metadata?.width && !isNaN(Number(item.metadata.width))) {
-    width = Number(item.metadata.width);
-  } else if (item.metadata?.image_width && !isNaN(Number(item.metadata.image_width))) {
-    width = Number(item.metadata.image_width);
-  } else if (item.metadata?.dimensions?.width && !isNaN(Number(item.metadata.dimensions.width))) {
-    width = Number(item.metadata.dimensions.width);
-  }
-  
-  if (item.metadata?.height && !isNaN(Number(item.metadata.height))) {
-    height = Number(item.metadata.height);
-  } else if (item.metadata?.image_height && !isNaN(Number(item.metadata.image_height))) {
-    height = Number(item.metadata.image_height);
-  } else if (item.metadata?.dimensions?.height && !isNaN(Number(item.metadata.dimensions.height))) {
-    height = Number(item.metadata.dimensions.height);
-  }
-  
-  // Try to parse from the 'size' metadata field (e.g., "1024x1024")
-  if (!width && item.metadata?.size && /\d+x\d+/i.test(item.metadata.size)) {
-    const parts = item.metadata.size.split('x');
-    if (parts.length === 2 && !isNaN(Number(parts[0])) && !isNaN(Number(parts[1]))) {
-      width = Number(parts[0]);
-    }
-  }
-  
-  if (!height && item.metadata?.size && /\d+x\d+/i.test(item.metadata.size)) {
-    const parts = item.metadata.size.split('x');
-    if (parts.length === 2 && !isNaN(Number(parts[1]))) {
-      height = Number(parts[1]);
-    }
-  }
-  
-  // If the filename contains dimensions (pattern like 1920x1080), try to extract them
-  const dimensionsMatch = filename.match(/(\d+)x(\d+)/i);
-  if (!width && !height && dimensionsMatch && dimensionsMatch.length >= 3) {
-    width = parseInt(dimensionsMatch[1], 10);
-    height = parseInt(dimensionsMatch[2], 10);
-  }
-  
-  // Extract tags if available
-  let tags: string[] = [];
-  if (item.metadata?.tags) {
-    try {
-      if (typeof item.metadata.tags === 'string') {
-        tags = JSON.parse(item.metadata.tags);
-      } else if (Array.isArray(item.metadata.tags)) {
-        tags = item.metadata.tags;
-      }
-    } catch (e) {
-      console.warn('Failed to parse tags metadata', e);
-    }
-  }
-  
-  // Log the mapping for debugging
-  console.log(`Mapping gallery item to metadata:`, {
-    id: item.id,
-    name: item.name,
-    folderPath: item.folder_path,
-    proxyUrl: src
-  });
-  
-  return {
-    id: item.id,
-    name: item.name,
-    src,
-    title: title.charAt(0).toUpperCase() + title.slice(1), // Capitalize first letter
-    description: description,
-    width,
-    height,
-    tags,
-    // We'll assign the size later
-    size: "medium", // Default size, will be overridden
-    originalItem: item,
-  };
 }
 
 /**
@@ -306,27 +236,52 @@ export async function fetchImages(
   folderPath?: string
 ): Promise<ImageMetadata[]> {
   try {
+    console.log(`Fetching images: limit=${limit}, offset=${offset}, folderPath=${folderPath}`);
+    
     // Try to fetch images from the API
     const response = await fetchGalleryImages(limit, offset, undefined, undefined, folderPath);
     
     if (response.success && response.items.length > 0) {
-      // Map items to metadata with Promise.all to handle async mapping
-      const imageItemPromises = response.items
-        .filter(item => item.media_type === MediaType.IMAGE)
-        .map(item => mapGalleryItemToImageMetadata(item));
+      console.log(`Received ${response.items.length} items from gallery API`);
       
-      const imageItems = await Promise.all(imageItemPromises);
+      // Filter for images only
+      const imageItems = response.items.filter(item => item.media_type === MediaType.IMAGE);
+      console.log(`Filtered to ${imageItems.length} image items`);
+      
+      if (imageItems.length === 0) {
+        console.warn("No image items found after filtering");
+        return [];
+      }
+      
+      // Map items to metadata with Promise.allSettled to handle individual failures
+      const imageItemPromises = imageItems.map(async (item, index) => {
+        try {
+          const metadata = await mapGalleryItemToImageMetadata(item);
+          console.log(`Successfully mapped item ${index + 1}/${imageItems.length}: ${item.name}`);
+          return metadata;
+        } catch (error) {
+          console.error(`Failed to map item ${item.name}:`, error);
+          return null;
+        }
+      });
+      
+      const results = await Promise.allSettled(imageItemPromises);
+      const successfulItems = results
+        .filter((result): result is PromiseFulfilledResult<ImageMetadata> => 
+          result.status === 'fulfilled' && result.value !== null
+        )
+        .map(result => result.value);
+      
+      console.log(`Successfully processed ${successfulItems.length}/${imageItems.length} images`);
       
       // Assign sizes in a structured way
-      return assignImageSizes(imageItems);
+      return assignImageSizes(successfulItems);
     } else {
-      console.warn("No images found in gallery API");
-      // Return empty array instead of mock images
+      console.warn("No images found in gallery API response", { success: response.success, itemCount: response.items.length });
       return [];
     }
   } catch (error) {
     console.error("Error fetching images from gallery API:", error);
-    // Return empty array instead of mock images
     return [];
   }
 } 

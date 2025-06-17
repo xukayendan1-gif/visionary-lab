@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
@@ -362,12 +362,12 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
               />
             )}
             
-            <Image
+            <OptimizedImage
               ref={imageRef}
               src={image.src}
               alt={image.title || image.name}
               fill
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              loadingType="gallery"
               className={`object-cover transition-all duration-200 ${loading ? 'opacity-0' : 'opacity-100'} ${error ? 'hidden' : ''} ${image.originalItem?.metadata?.has_transparency === "true" ? 'z-10' : ''}`}
               onLoad={handleImageLoad}
               onError={handleImageError}

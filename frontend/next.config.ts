@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+// Bundle analyzer
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
 // Get environment variables with defaults
 const rawProtocol = process.env.NEXT_PUBLIC_API_PROTOCOL || 'http';
 const API_PROTOCOL = (rawProtocol === 'https' ? 'https' : 'http') as 'http' | 'https';
@@ -15,6 +20,14 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // Add allowedDevOrigins to prevent the CORS warning in development
   allowedDevOrigins: ['localhost', '127.0.0.1', '::1'],
+  
+  // Enable compression
+  compress: true,
+  
+  // Optimize static generation
+  trailingSlash: false,
+  
+  // Image optimization configuration
   images: {
     remotePatterns: [
       {
@@ -22,23 +35,60 @@ const nextConfig: NextConfig = {
         hostname: API_HOSTNAME,
         port: API_PORT,
         pathname: '/api/v1/gallery/asset/**',
-      },
-      {
-        protocol: 'https',
-        hostname: `${STORAGE_ACCOUNT_NAME}.blob.core.windows.net`,
-        port: '',
-        pathname: '/**',
       }
     ],
-    // Optimize image handling for Azure Blob Storage 
-    minimumCacheTTL: 60,
-    unoptimized: true,
+    // Image optimization settings
+    minimumCacheTTL: 86400, // 24 hours
+    formats: ['image/webp', 'image/avif'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
+  
   experimental: {
     serverActions: {
       bodySizeLimit: '26mb', // Increased for large image uploads
     },
+    // Enable modern bundling optimizations
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    // Enable turbo mode for faster builds
+    turbo: {
+      rules: {
+        '*.svg': {
+          loaders: ['@svgr/webpack'],
+          as: '*.js',
+        },
+      },
+    },
   },
+  
+  // Webpack optimizations
+  webpack: (config, { dev, isServer }) => {
+    // Production optimizations
+    if (!dev) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            vendor: {
+              test: /[\\/]node_modules[\\/]/,
+              name: 'vendors',
+              chunks: 'all',
+            },
+            common: {
+              name: 'common',
+              minChunks: 2,
+              chunks: 'all',
+              enforce: true,
+            },
+          },
+        },
+      };
+    }
+    
+    return config;
+  },
+  
   // Disable ESLint during builds
   eslint: {
     ignoreDuringBuilds: true,
@@ -47,7 +97,8 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Add CORS headers to all responses from the Next.js server
+  
+  // Enhanced headers with caching and security
   async headers() {
     return [
       {
@@ -59,9 +110,47 @@ const nextConfig: NextConfig = {
           { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,DELETE,OPTIONS" },
           { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization" },
         ]
-      }
+      },
+      {
+        // Cache static assets
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        // Cache images with longer TTL
+        source: '/api/image/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=604800, s-maxage=2592000', // 1 week browser, 30 days CDN
+          },
+        ],
+      },
+      {
+        // Security headers
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+        ],
+      },
     ];
-  }
+  },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);
