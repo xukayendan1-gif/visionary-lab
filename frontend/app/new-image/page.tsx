@@ -293,16 +293,8 @@ function NewImagePageContent() {
       // Add timestamp to URL to prevent caching issues
       const cacheBuster = `${image.src.includes('?') ? '&' : '?'}_t=${Date.now()}`;
       
-      // Use a specific proxy route for transparent PNGs if needed
-      const hasTransparency = image.originalItem?.metadata?.has_transparency === "true";
-      if (hasTransparency && image.originalItem?.url) {
-        console.log("Image has transparency, using original URL for dimension extraction");
-        // Try the original URL directly for dimension extraction
-        tempImg.src = image.originalItem.url + cacheBuster;
-      } else {
-        // Use the normal image src
-        tempImg.src = image.src + cacheBuster;
-      }
+      // Use the normal image src for all cases (now using SAS tokens)
+      tempImg.src = image.src + cacheBuster;
     }
     
     // Find the index of the clicked image
