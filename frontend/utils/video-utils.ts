@@ -80,6 +80,7 @@ export function getVideoFormat(url: string): string | null {
  */
 export function isModernVideoFormat(url: string): boolean {
   const format = getVideoFormat(url);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return format ? VIDEO_FORMATS.modern.includes(format as any) : false;
 }
 

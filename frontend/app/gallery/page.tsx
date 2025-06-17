@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { PageHeader } from "@/components/page-header";
 import { fetchVideos, VideoMetadata } from "@/utils/gallery-utils";
@@ -45,7 +45,7 @@ export default function GalleryPage() {
   const [lastRefreshedText, setLastRefreshedText] = useState<string>("Never refreshed");
   const limit = 50;
 
-  const loadVideos = async (resetVideos = true, isAutoRefresh = false) => {
+  const loadVideos = useCallback(async (resetVideos = true, isAutoRefresh = false) => {
     if (resetVideos) {
       if (!isAutoRefresh) {
         setLoading(true);
@@ -88,7 +88,7 @@ export default function GalleryPage() {
       setIsLoadingMore(false);
       setIsRefreshing(false);
     }
-  };
+  }, [folderParam, limit, offset]);
 
   // Toggle auto-refresh
   const toggleAutoRefresh = () => {
@@ -119,7 +119,7 @@ export default function GalleryPage() {
       clearInterval(refreshInterval);
       setRefreshInterval(null);
     }
-  }, [autoRefresh]);
+  }, [autoRefresh, refreshInterval, loadVideos]);
 
   // Update the "time ago" text every minute
   useEffect(() => {
@@ -143,12 +143,12 @@ export default function GalleryPage() {
   // When folder parameter changes, reload videos
   useEffect(() => {
     loadVideos(true, false);
-  }, [folderParam]);
+  }, [folderParam, loadVideos]);
 
   // Initial load
   useEffect(() => {
     loadVideos();
-  }, []);
+  }, [loadVideos]);
 
   // Function to handle video deletion
   const handleVideoDeleted = (deletedVideoName: string) => {
@@ -185,7 +185,7 @@ export default function GalleryPage() {
   };
 
   // Function to generate sample tags for videos
-  const generateTagsForVideo = (video: VideoMetadata, index: number): string[] => {
+  const generateTagsForVideo = (video: VideoMetadata): string[] => {
     // First, check if we have real analysis tags
     if (video.analysis?.tags && video.analysis.tags.length > 0) {
       return video.analysis.tags;
@@ -220,7 +220,8 @@ export default function GalleryPage() {
         <PageHeader title={folderParam ? `Videos in ${folderParam}` : "All Videos"}>
           <div className="flex items-center">
             {folderParam && (
-              <Badge variant="outline" className="mr-2 text-xs" icon={<FolderIcon className="w-3 h-3 mr-1" />}>
+              <Badge variant="outline" className="mr-2 text-xs">
+                <FolderIcon className="w-3 h-3 mr-1" />
                 {folderParam}
               </Badge>
             )}
@@ -296,7 +297,7 @@ export default function GalleryPage() {
                 {loading ? (
                   renderSkeletons(12)
                 ) : videos.length > 0 ? (
-                  videos.map((video, index) => (
+                  videos.map((video) => (
                     <VideoCard
                       key={video.name}
                       src={video.src}
@@ -305,7 +306,7 @@ export default function GalleryPage() {
                       blobName={video.name}
                       onDelete={() => handleVideoDeleted(video.name)}
                       autoPlay={autoPlay}
-                      tags={generateTagsForVideo(video, index)}
+                      tags={generateTagsForVideo(video)}
                     />
                   ))
                 ) : (

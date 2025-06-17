@@ -57,8 +57,9 @@ export function usePerformanceMonitor() {
       new PerformanceObserver((list) => {
         let clsValue = 0;
         for (const entry of list.getEntries()) {
-          if (!(entry as any).hadRecentInput) {
-            clsValue += (entry as any).value;
+          const layoutShiftEntry = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+          if (!layoutShiftEntry.hadRecentInput) {
+            clsValue += layoutShiftEntry.value || 0;
           }
         }
         if (metricsRef.current) {
@@ -71,7 +72,8 @@ export function usePerformanceMonitor() {
         const entries = list.getEntries();
         const fidEntry = entries[0];
         if (fidEntry && metricsRef.current) {
-          metricsRef.current.firstInputDelay = (fidEntry as any).processingStart - fidEntry.startTime;
+          const firstInputEntry = fidEntry as PerformanceEntry & { processingStart?: number };
+          metricsRef.current.firstInputDelay = (firstInputEntry.processingStart || 0) - fidEntry.startTime;
         }
       }).observe({ entryTypes: ['first-input'] });
     }

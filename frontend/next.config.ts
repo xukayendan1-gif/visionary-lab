@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 // Bundle analyzer
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
@@ -13,7 +14,7 @@ const API_HOSTNAME = process.env.NEXT_PUBLIC_API_HOSTNAME || 'localhost';
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT && process.env.NEXT_PUBLIC_API_PORT.length <= 5 
   ? process.env.NEXT_PUBLIC_API_PORT 
   : '';
-const STORAGE_ACCOUNT_NAME = process.env.NEXT_PUBLIC_STORAGE_ACCOUNT_NAME;
+// const STORAGE_ACCOUNT_NAME = process.env.NEXT_PUBLIC_STORAGE_ACCOUNT_NAME;
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -62,7 +63,7 @@ const nextConfig: NextConfig = {
   },
   
   // Webpack optimizations
-  webpack: (config, { dev, isServer }) => {
+  webpack: (config, { dev }) => {
     // Production optimizations
     if (!dev) {
       config.optimization = {

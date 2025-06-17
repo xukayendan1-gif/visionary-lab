@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useRef, forwardRef, useEffect } from 'react';
+import { isAzureBlobStorageUrl } from '@/utils/image-utils';
 import { 
-  isAzureBlobStorageUrl, 
   generatePosterUrl, 
-  generateThumbnailUrl,
   getVideoAttributes,
   shouldLazyLoadVideo,
   generateVideoSources,
-  getVideoLoadingPriority,
   type VideoLoadingType 
 } from '@/utils/video-utils';
 
@@ -56,7 +54,6 @@ export const OptimizedVideo = forwardRef<HTMLVideoElement, OptimizedVideoProps>(
 
     // Get loading configuration
     const config = getVideoAttributes(loadingType);
-    const priority = getVideoLoadingPriority(index, loadingType, isAboveFold);
     
     // Override config with custom props
     const finalMuted = customMuted !== undefined ? customMuted : config.muted;

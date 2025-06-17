@@ -170,7 +170,7 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                         // Wait 10 seconds for Azure Blob Storage to propagate the uploaded video
                         await new Promise(resolve => setTimeout(resolve, 10000));
                         
-                        const analysisResult = await analyzeAndUpdateVideoMetadata(fileName);
+                        await analyzeAndUpdateVideoMetadata(fileName);
                         
                         // Don't show individual analysis toasts - we'll show a consolidated one later
                                               } catch (analysisError) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   X, ChevronLeft, ChevronRight, Download, Trash2, FolderUp, Loader2, Maximize, Minimize, Info 
 } from "lucide-react";
@@ -151,10 +151,10 @@ export function ImageDetailView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [image, images]);
+  }, [image, images, navigateImage, onClose]);
 
   // Navigate to another image
-  const navigateImage = (direction: 'prev' | 'next') => {
+  const navigateImage = useCallback((direction: 'prev' | 'next') => {
     if (!image || images.length <= 1) return;
     
     const currentIndex = images.findIndex(img => img.id === image.id);
@@ -171,7 +171,7 @@ export function ImageDetailView({
     if (onNavigate) {
       onNavigate(direction, newIndex);
     }
-  };
+  }, [image, images, onNavigate]);
 
   // Handle image loading and statistics
   useEffect(() => {

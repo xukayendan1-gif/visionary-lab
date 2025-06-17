@@ -211,7 +211,7 @@ function NewImagePageContent() {
       clearInterval(refreshInterval);
       setRefreshInterval(null);
     }
-  }, [autoRefresh, autoRefreshImages]); // Only depend on autoRefresh and the stable autoRefreshImages function
+  }, [autoRefresh, autoRefreshImages, refreshInterval]); // Only depend on autoRefresh and the stable autoRefreshImages function
 
   // Update the "time ago" text every minute
   useEffect(() => {

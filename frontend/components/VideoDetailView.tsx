@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   X, ChevronLeft, ChevronRight, Play, Pause, 
   Download, Trash2, FolderUp, Eye, Loader2, Maximize, Minimize 
@@ -72,7 +72,7 @@ export function VideoDetailView({
   };
 
   // Video player controls
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     
     try {
@@ -108,15 +108,15 @@ export function VideoDetailView({
       console.error("Toggle play error:", error);
       toast.error("Video playback error");
     }
-  };
+  }, [isPlaying]);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!videoRef.current) return;
     
     const newMutedState = !isMuted;
     videoRef.current.muted = newMutedState;
     setIsMuted(newMutedState);
-  };
+  }, [isMuted]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -320,10 +320,10 @@ export function VideoDetailView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [video, videos]);
+  }, [video, videos, navigateVideo, onClose, togglePlay, toggleMute]);
 
   // Navigate to another video
-  const navigateVideo = (direction: 'prev' | 'next') => {
+  const navigateVideo = useCallback((direction: 'prev' | 'next') => {
     if (!video || videos.length <= 1) return;
     
     const currentIndex = videos.findIndex(v => v.id === video.id);
@@ -342,7 +342,7 @@ export function VideoDetailView({
     if (onNavigate) {
       onNavigate(direction, newIndex);
     }
-  };
+  }, [video, videos, onNavigate]);
 
   // Handle video deletion
   const handleDelete = async () => {

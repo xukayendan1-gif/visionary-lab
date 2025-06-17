@@ -237,7 +237,7 @@ function NewVideoPageContent() {
       clearInterval(refreshInterval);
       setRefreshInterval(null);
     }
-  }, [autoRefresh, limit, folderParam]);
+  }, [autoRefresh, limit, folderParam, isRefreshing, loading, refreshInterval]);
 
   // Update the "time ago" text every minute
   useEffect(() => {
@@ -298,7 +298,7 @@ function NewVideoPageContent() {
         }
       }, 1000);
     }
-  }, [queueItems, jobsInProgress, loading, isRefreshing, folderParam, loadVideos]);
+  }, [queueItems, jobsInProgress, loading, isRefreshing, folderParam, loadVideos, lastCompletedJobId]);
 
   // No need for a separate loading effect - videos are loaded when the folder changes
   // and can be refreshed manually or with auto-refresh
@@ -338,7 +338,7 @@ function NewVideoPageContent() {
   };
 
   // Function to generate sample tags for videos
-  const generateTagsForVideo = (video: VideoMetadata, index: number): string[] => {
+  const generateTagsForVideo = (video: VideoMetadata): string[] => {
     // First, check if we have real analysis tags
     if (video.analysis?.tags && video.analysis.tags.length > 0) {
       return video.analysis.tags;
@@ -461,7 +461,6 @@ function NewVideoPageContent() {
     
     try {
       let generationPrompt = settings.prompt;
-      let brandProtectionApplied = false;
       
       // Apply brand protection if enabled from global settings
       if (imageSettings.settings.brandsProtection !== "off" && imageSettings.settings.brandsList.length > 0) {
@@ -473,9 +472,7 @@ function NewVideoPageContent() {
             imageSettings.settings.brandsProtection
           );
           
-          if (generationPrompt !== settings.prompt) {
-            brandProtectionApplied = true;
-          }
+          // Brand protection was applied if prompt changed
         } catch (error) {
           console.error('Error applying brand protection:', error);
           // Don't show a separate error toast for brand protection - just log and continue
@@ -705,7 +702,7 @@ function NewVideoPageContent() {
                 {columns.map((column, columnIndex) => (
                   <div key={`column-${columnIndex}`} className="flex flex-col space-y-6">
                     {column.map((video, videoIndex) => {
-                      const sampleTags = generateTagsForVideo(video, videoIndex * 3 + columnIndex);
+                      const sampleTags = generateTagsForVideo(video);
                       
                       // Determine if this should be a large video
                       // For example, every 5th video in the overall sequence
