@@ -2,8 +2,6 @@ const CACHE_NAME = 'visionary-lab-v1';
 const STATIC_CACHE = 'static-v1';
 const IMAGE_CACHE = 'images-v1';
 const API_CACHE = 'api-v1';
-const VIDEO_THUMBNAILS_CACHE = 'video-thumbnails-v1';
-const AZURE_BLOB_CACHE = 'azure-blob-v1';
 
 // Assets to cache immediately
 const STATIC_ASSETS = [
@@ -32,8 +30,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME && cacheName !== STATIC_CACHE && 
-              cacheName !== IMAGE_CACHE && cacheName !== API_CACHE &&
-              cacheName !== VIDEO_THUMBNAILS_CACHE && cacheName !== AZURE_BLOB_CACHE) {
+              cacheName !== IMAGE_CACHE && cacheName !== API_CACHE) {
             console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -59,17 +56,9 @@ self.addEventListener('fetch', (event) => {
     // Static assets - cache first with long TTL
     event.respondWith(cacheFirst(request, STATIC_CACHE));
   } else if (url.hostname.includes('.blob.core.windows.net')) {
-    // Azure Blob Storage requests
-    if (isVideoThumbnailOrPoster(url.pathname)) {
-      // Cache video thumbnails and posters
-      event.respondWith(cacheFirst(request, VIDEO_THUMBNAILS_CACHE, 7 * 24 * 60 * 60 * 1000)); // 7 days
-    } else if (isVideoFile(url.pathname)) {
-      // Don't cache actual video files (too large), but add headers for better streaming
-      event.respondWith(handleVideoRequest(request));
-    } else {
-      // Other Azure Blob assets (images) - cache with medium TTL
-      event.respondWith(cacheFirst(request, AZURE_BLOB_CACHE, 24 * 60 * 60 * 1000)); // 24 hours
-    }
+    // Azure Blob Storage requests - skip caching due to SAS token auth
+    // Let the browser handle these requests normally to avoid CORS issues
+    return;
   } else if (url.pathname.startsWith('/api/')) {
     // API calls - network first with short TTL
     event.respondWith(networkFirst(request, API_CACHE, 5 * 60 * 1000)); // 5 minutes
@@ -168,39 +157,4 @@ async function doBackgroundSync() {
   console.log('Background sync triggered');
 }
 
-// Helper functions for Azure Blob Storage video handling
-function isVideoFile(pathname) {
-  const videoExtensions = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v|3gp|m3u8|mpd)(\?.*)?$/i;
-  return videoExtensions.test(pathname);
-}
-
-function isVideoThumbnailOrPoster(pathname) {
-  return pathname.includes('_poster.') || pathname.includes('_thumb_') || pathname.includes('_thumbnail.');
-}
-
-// Special handling for video requests - don't cache but optimize headers
-async function handleVideoRequest(request) {
-  try {
-    const response = await fetch(request);
-    
-    if (response.ok) {
-      // Clone response to modify headers
-      const modifiedResponse = new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: {
-          ...Object.fromEntries(response.headers.entries()),
-          'Cache-Control': 'public, max-age=3600', // 1 hour browser cache
-          'Accept-Ranges': 'bytes', // Enable range requests for video seeking
-        }
-      });
-      
-      return modifiedResponse;
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('Video request failed:', error);
-    throw error;
-  }
-} 
+ 
