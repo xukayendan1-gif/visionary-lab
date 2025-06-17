@@ -62,10 +62,10 @@ const nextConfig: NextConfig = {
     },
   },
   
-  // Webpack optimizations
-  webpack: (config, { dev }) => {
-    // Production optimizations
-    if (!dev) {
+  // Webpack optimizations - using safer chunk splitting
+  webpack: (config, { dev, isServer }) => {
+    // Only apply optimizations to client-side builds to avoid SSR issues
+    if (!dev && !isServer) {
       config.optimization = {
         ...config.optimization,
         splitChunks: {
@@ -73,14 +73,8 @@ const nextConfig: NextConfig = {
           cacheGroups: {
             vendor: {
               test: /[\\/]node_modules[\\/]/,
-              name: 'vendors',
+              name: 'vendor',
               chunks: 'all',
-            },
-            common: {
-              name: 'common',
-              minChunks: 2,
-              chunks: 'all',
-              enforce: true,
             },
           },
         },
@@ -111,6 +105,20 @@ const nextConfig: NextConfig = {
           { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,DELETE,OPTIONS" },
           { key: "Access-Control-Allow-Headers", value: "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization" },
         ]
+      },
+      {
+        // Service worker caching
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, must-revalidate',
+          },
+          {
+            key: 'Service-Worker-Allowed',
+            value: '/',
+          },
+        ],
       },
       {
         // Cache static assets
