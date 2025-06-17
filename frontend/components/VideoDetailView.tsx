@@ -267,6 +267,28 @@ export function VideoDetailView({
   }, []);
 
   // Handle keyboard navigation
+  // Navigate to another video - moved before useEffect to avoid temporal dead zone
+  const navigateVideo = useCallback((direction: 'prev' | 'next') => {
+    if (!video || videos.length <= 1) return;
+    
+    const currentIndex = videos.findIndex(v => v.id === video.id);
+    if (currentIndex === -1) return;
+    
+    let newIndex: number;
+    if (direction === 'prev') {
+      newIndex = currentIndex === 0 ? videos.length - 1 : currentIndex - 1;
+    } else {
+      newIndex = currentIndex === videos.length - 1 ? 0 : currentIndex + 1;
+    }
+    
+    // The parent component that owns the VideoDetailView should handle the navigation
+    // by updating the fullscreenVideo state with videos[newIndex].
+    // We'll just call the onNavigate callback if available.
+    if (onNavigate) {
+      onNavigate(direction, newIndex);
+    }
+  }, [video, videos, onNavigate]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check if the event target is an input field, textarea, or element with contentEditable
@@ -321,28 +343,6 @@ export function VideoDetailView({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [video, videos, navigateVideo, onClose, togglePlay, toggleMute]);
-
-  // Navigate to another video
-  const navigateVideo = useCallback((direction: 'prev' | 'next') => {
-    if (!video || videos.length <= 1) return;
-    
-    const currentIndex = videos.findIndex(v => v.id === video.id);
-    if (currentIndex === -1) return;
-    
-    let newIndex: number;
-    if (direction === 'prev') {
-      newIndex = currentIndex === 0 ? videos.length - 1 : currentIndex - 1;
-    } else {
-      newIndex = currentIndex === videos.length - 1 ? 0 : currentIndex + 1;
-    }
-    
-    // The parent component that owns the VideoDetailView should handle the navigation
-    // by updating the fullscreenVideo state with videos[newIndex].
-    // We'll just call the onNavigate callback if available.
-    if (onNavigate) {
-      onNavigate(direction, newIndex);
-    }
-  }, [video, videos, onNavigate]);
 
   // Handle video deletion
   const handleDelete = async () => {

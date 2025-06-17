@@ -62,27 +62,6 @@ const nextConfig: NextConfig = {
     },
   },
   
-  // Webpack optimizations - using safer chunk splitting
-  webpack: (config, { dev, isServer }) => {
-    // Only apply optimizations to client-side builds to avoid SSR issues
-    if (!dev && !isServer) {
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          chunks: 'all',
-          cacheGroups: {
-            vendor: {
-              test: /[\\/]node_modules[\\/]/,
-              name: 'vendor',
-              chunks: 'all',
-            },
-          },
-        },
-      };
-    }
-    
-    return config;
-  },
   
   // Disable ESLint during builds
   eslint: {
