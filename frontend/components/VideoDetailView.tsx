@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   X, ChevronLeft, ChevronRight, Play, Pause, 
   Download, Trash2, FolderUp, Eye, Loader2, Maximize, Minimize 
@@ -72,7 +72,7 @@ export function VideoDetailView({
   };
 
   // Video player controls
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     
     try {
@@ -108,15 +108,15 @@ export function VideoDetailView({
       console.error("Toggle play error:", error);
       toast.error("Video playback error");
     }
-  };
+  }, [isPlaying]);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!videoRef.current) return;
     
     const newMutedState = !isMuted;
     videoRef.current.muted = newMutedState;
     setIsMuted(newMutedState);
-  };
+  }, [isMuted]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -267,6 +267,28 @@ export function VideoDetailView({
   }, []);
 
   // Handle keyboard navigation
+  // Navigate to another video - moved before useEffect to avoid temporal dead zone
+  const navigateVideo = useCallback((direction: 'prev' | 'next') => {
+    if (!video || videos.length <= 1) return;
+    
+    const currentIndex = videos.findIndex(v => v.id === video.id);
+    if (currentIndex === -1) return;
+    
+    let newIndex: number;
+    if (direction === 'prev') {
+      newIndex = currentIndex === 0 ? videos.length - 1 : currentIndex - 1;
+    } else {
+      newIndex = currentIndex === videos.length - 1 ? 0 : currentIndex + 1;
+    }
+    
+    // The parent component that owns the VideoDetailView should handle the navigation
+    // by updating the fullscreenVideo state with videos[newIndex].
+    // We'll just call the onNavigate callback if available.
+    if (onNavigate) {
+      onNavigate(direction, newIndex);
+    }
+  }, [video, videos, onNavigate]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check if the event target is an input field, textarea, or element with contentEditable
@@ -320,29 +342,7 @@ export function VideoDetailView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [video, videos]);
-
-  // Navigate to another video
-  const navigateVideo = (direction: 'prev' | 'next') => {
-    if (!video || videos.length <= 1) return;
-    
-    const currentIndex = videos.findIndex(v => v.id === video.id);
-    if (currentIndex === -1) return;
-    
-    let newIndex: number;
-    if (direction === 'prev') {
-      newIndex = currentIndex === 0 ? videos.length - 1 : currentIndex - 1;
-    } else {
-      newIndex = currentIndex === videos.length - 1 ? 0 : currentIndex + 1;
-    }
-    
-    // The parent component that owns the VideoDetailView should handle the navigation
-    // by updating the fullscreenVideo state with videos[newIndex].
-    // We'll just call the onNavigate callback if available.
-    if (onNavigate) {
-      onNavigate(direction, newIndex);
-    }
-  };
+  }, [video, videos, navigateVideo, onClose, togglePlay, toggleMute]);
 
   // Handle video deletion
   const handleDelete = async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   X, ChevronLeft, ChevronRight, Download, Trash2, FolderUp, Loader2, Maximize, Minimize, Info 
 } from "lucide-react";
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MediaType, deleteGalleryAsset, fetchFolders, moveAsset } from "@/services/api";
+import { OptimizedImage } from "@/components/OptimizedImage";
 
 interface ImageMetadata {
   src: string;
@@ -119,6 +120,26 @@ export function ImageDetailView({
     };
   }, []);
 
+  // Navigate to another image
+  const navigateImage = useCallback((direction: 'prev' | 'next') => {
+    if (!image || images.length <= 1) return;
+    
+    const currentIndex = images.findIndex(img => img.id === image.id);
+    if (currentIndex === -1) return;
+    
+    let newIndex: number;
+    if (direction === 'prev') {
+      newIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1;
+    } else {
+      newIndex = currentIndex === images.length - 1 ? 0 : currentIndex + 1;
+    }
+    
+    // The parent component that owns the ImageDetailView should handle the navigation
+    if (onNavigate) {
+      onNavigate(direction, newIndex);
+    }
+  }, [image, images, onNavigate]);
+
   // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -151,27 +172,7 @@ export function ImageDetailView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [image, images]);
-
-  // Navigate to another image
-  const navigateImage = (direction: 'prev' | 'next') => {
-    if (!image || images.length <= 1) return;
-    
-    const currentIndex = images.findIndex(img => img.id === image.id);
-    if (currentIndex === -1) return;
-    
-    let newIndex: number;
-    if (direction === 'prev') {
-      newIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1;
-    } else {
-      newIndex = currentIndex === images.length - 1 ? 0 : currentIndex + 1;
-    }
-    
-    // The parent component that owns the ImageDetailView should handle the navigation
-    if (onNavigate) {
-      onNavigate(direction, newIndex);
-    }
-  };
+  }, [image, images, navigateImage, onClose]);
 
   // Handle image loading and statistics
   useEffect(() => {
@@ -511,7 +512,7 @@ export function ImageDetailView({
                 
                 {/* Image element */}
                 {image && image.src && (
-                  <img
+                  <OptimizedImage
                     ref={imageRef}
                     src={image.src}
                     alt={image.title || image.name}
@@ -521,6 +522,8 @@ export function ImageDetailView({
                       setIsLoading(false);
                       setIsError(true);
                     }}
+                    priority={true}
+                    loadingType="fullscreen"
                   />
                 )}
                 
@@ -587,16 +590,27 @@ export function ImageDetailView({
                     const metadataTags = image.originalItem.metadata.tags;
                     if (typeof metadataTags === 'string') {
                       if (metadataTags.startsWith('[') && metadataTags.endsWith(']')) {
-                        const parsedTags = JSON.parse(metadataTags);
+                        // Clean the string before parsing by removing quotes around underscores
+                        const cleanedTags = metadataTags.replace(/"_([^"]*?)_"/g, '"$1"');
+                        const parsedTags = JSON.parse(cleanedTags);
                         // Clean tags by removing underscores at start and end
-                        tags = parsedTags.map((tag: string) => tag.replace(/^_|_$/g, ''));
+                        tags = parsedTags.map((tag: string) => tag.replace(/^_+|_+$/g, ''));
                       } else {
                         // Try to parse comma-separated values
-                        tags = metadataTags.split(',').map(tag => tag.trim().replace(/^_|_$/g, ''));
+                        tags = metadataTags.split(',').map(tag => tag.trim().replace(/^_+|_+$/g, '').replace(/^"|"$/g, ''));
                       }
                     }
                   } catch (e) {
-                    console.warn("Failed to parse tags from metadata:", e);
+                    console.warn("Failed to parse tags from metadata:", e, "Tags string:", image.originalItem.metadata.tags);
+                    // Fallback: try to extract meaningful content
+                    if (typeof image.originalItem.metadata.tags === 'string') {
+                      // Simple fallback parsing for comma-separated or space-separated values
+                      tags = image.originalItem.metadata.tags
+                        .replace(/[\[\]"]/g, '') // Remove brackets and quotes
+                        .split(/[,\s]+/) // Split on commas or spaces
+                        .map(tag => tag.trim().replace(/^_+|_+$/g, '')) // Clean underscores
+                        .filter(tag => tag.length > 0); // Remove empty strings
+                    }
                   }
                 }
                 
@@ -609,12 +623,22 @@ export function ImageDetailView({
                   if (tags.length === 1 && typeof tags[0] === 'string') {
                     try {
                       if (tags[0].startsWith('[') && tags[0].endsWith(']')) {
-                        const parsed = JSON.parse(tags[0]);
+                        // Clean the string before parsing by removing quotes around underscores
+                        const cleanedTags = tags[0].replace(/"_([^"]*?)_"/g, '"$1"');
+                        const parsed = JSON.parse(cleanedTags);
                         // Clean tags by removing underscores at start and end
-                        parsedTags = parsed.map((tag: string) => tag.replace(/^_|_$/g, ''));
+                        parsedTags = parsed.map((tag: string) => tag.replace(/^_+|_+$/g, ''));
                       }
                     } catch (e) {
-                      console.warn("Failed to parse tags:", e);
+                      console.warn("Failed to parse tags:", e, "Tags string:", tags[0]);
+                      // Fallback: try to extract meaningful content
+                      if (typeof tags[0] === 'string') {
+                        parsedTags = tags[0]
+                          .replace(/[\[\]"]/g, '') // Remove brackets and quotes
+                          .split(/[,\s]+/) // Split on commas or spaces
+                          .map(tag => tag.trim().replace(/^_+|_+$/g, '')) // Clean underscores
+                          .filter(tag => tag.length > 0); // Remove empty strings
+                      }
                     }
                   }
                   

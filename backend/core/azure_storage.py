@@ -38,6 +38,54 @@ class AzureBlobStorageService:
         self._ensure_container_exists(self.image_container)
         self._ensure_container_exists(self.video_container)
 
+        # Configure CORS for direct access from frontend
+        self._configure_cors()
+
+    def _configure_cors(self) -> None:
+        """
+        Configure CORS settings on the Azure Storage account to allow direct access
+        from frontend domains
+        """
+        try:
+            from azure.storage.blob._models import CorsRule
+
+            # Define CORS rules
+            cors_rules = [
+                CorsRule(
+                    allowed_origins=[
+                        "http://localhost:3000",  # Local development
+                        "https://localhost:3000",  # Local development with HTTPS
+                        "http://127.0.0.1:3000",  # Alternative local development
+                        "https://127.0.0.1:3000",  # Alternative local development with HTTPS
+                        "*"  # Allow all origins for now - should be restricted in production
+                    ],
+                    allowed_methods=[
+                        "GET",
+                        "HEAD",
+                        "OPTIONS"
+                    ],
+                    allowed_headers=[
+                        "*"
+                    ],
+                    exposed_headers=[
+                        "*"
+                    ],
+                    max_age_in_seconds=3600
+                )
+            ]
+
+            # Set CORS rules
+            self.blob_service_client.set_service_properties(
+                cors=cors_rules
+            )
+
+            print("Successfully configured CORS for Azure Blob Storage")
+
+        except Exception as e:
+            print(
+                f"Warning: Could not configure CORS for Azure Blob Storage: {e}")
+            # Don't fail if CORS configuration fails, as it might be due to permissions
+
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,
                    limit: int = 100, marker: Optional[str] = None,
                    delimiter: Optional[str] = None) -> Dict:

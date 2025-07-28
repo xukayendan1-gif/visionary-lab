@@ -359,8 +359,6 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
         
         setIsAnalyzing(true);
         
-        let successCount = 0;
-        
         // For each saved image, find its corresponding analysis result and apply
         for (let i = 0; i < saveResponse.saved_images.length; i++) {
           const savedImage = saveResponse.saved_images[i];
@@ -393,7 +391,6 @@ export function ImageCreationContainer({ className = "", onImagesSaved }: ImageC
               
               // Update the blob metadata
               await updateAssetMetadata(savedImage.blob_name, MediaType.IMAGE, enhancedMetadata);
-              successCount++;
             } catch (error) {
               console.error(`Failed to update metadata for image ${savedImage.blob_name}:`, error);
               // Log error but don't track failure count

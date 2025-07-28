@@ -65,13 +65,23 @@ class SasTokenService {
   private async fetchNewTokens(): Promise<SasTokens> {
     try {
       console.log("Fetching new SAS tokens...");
-      const response = await fetch(`${API_BASE_URL}/gallery/sas-tokens`);
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`${API_BASE_URL}/gallery/sas-tokens`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch SAS tokens: ${response.status}`);
+        throw new Error(`Failed to fetch SAS tokens: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
+      console.log("Successfully fetched SAS tokens");
       
       return {
         videoSasToken: data.video_sas_token,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
@@ -128,10 +128,29 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
           const metadataTags = image.originalItem.metadata.tags;
           if (typeof metadataTags === 'string') {
             if (metadataTags.startsWith('[') && metadataTags.endsWith(']')) {
+              // Clean malformed JSON first
+              let cleanedTags = metadataTags;
+              
+              // Fix common malformed patterns
+              cleanedTags = cleanedTags.replace(/"_[^"]*_"/g, (match) => {
+                // Remove underscores at start and end within quotes
+                return match.replace(/^"_|_"$/g, match.startsWith('"_') ? '"' : '"');
+              });
+              
+              // Fix standalone quoted underscores or malformed tokens
+              cleanedTags = cleanedTags.replace(/"_+"/g, '""');
+              cleanedTags = cleanedTags.replace(/,\s*,/g, ',');
+              cleanedTags = cleanedTags.replace(/\[\s*,/g, '[');
+              cleanedTags = cleanedTags.replace(/,\s*\]/g, ']');
+              
               // Parse JSON array format
-              const tags = JSON.parse(metadataTags);
-              // Clean tags by removing underscores at start and end
-              setParsedTags(tags.map((tag: string) => tag.replace(/^_|_$/g, '')));
+              const tags = JSON.parse(cleanedTags);
+              // Filter out empty strings and clean remaining tags
+              setParsedTags(
+                tags
+                  .filter((tag: string) => tag && tag.trim() !== '')
+                  .map((tag: string) => tag.replace(/^_|_$/g, ''))
+              );
             } else {
               // Parse comma-separated format
               setParsedTags(metadataTags.split(',').map(tag => tag.trim().replace(/^_|_$/g, '')));
@@ -362,12 +381,12 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
               />
             )}
             
-            <Image
+            <OptimizedImage
               ref={imageRef}
               src={image.src}
               alt={image.title || image.name}
               fill
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              loadingType="gallery"
               className={`object-cover transition-all duration-200 ${loading ? 'opacity-0' : 'opacity-100'} ${error ? 'hidden' : ''} ${image.originalItem?.metadata?.has_transparency === "true" ? 'z-10' : ''}`}
               onLoad={handleImageLoad}
               onError={handleImageError}

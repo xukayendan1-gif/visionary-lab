@@ -5,8 +5,11 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:analyze": "ANALYZE=true next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "analyze": "cross-env ANALYZE=true next build",
+    "lighthouse": "lighthouse http://localhost:3000 --output html --output-path ./lighthouse-report.html"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
@@ -53,13 +56,16 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@next/bundle-analyzer": "^15.2.4",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
     "form-data": "^4.0.2",
+    "lighthouse": "^12.0.0",
     "node-fetch": "^2.7.0",
     "tailwindcss": "^4",
     "typescript": "^5"
