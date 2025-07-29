@@ -38,7 +38,6 @@ param LLM_AOAI_API_KEY string
 @secure()
 param SORA_AOAI_API_KEY string
 
-
 // Parameters for the Docker images for the backend and frontend container apps
 param DOCKER_IMAGE_BACKEND string = 'aigbbemea.azurecr.io/visionarylab-video:latest'
 param DOCKER_IMAGE_FRONTEND string = 'aigbbemea.azurecr.io/visionarylab-frontend-video:latest'
@@ -53,7 +52,26 @@ module storageAccountMod './modules/storageAccount.bicep' = {
     location: location
     storageAccountName: storageAccountName
     // keyVaultName: keyVaultMod.outputs.keyVaultName
-    deployNew: true  // set false to reuse an existing storage account
+    deployNew: true // set false to reuse an existing storage account
+  }
+}
+
+// Add these parameters to your existing parameters section in main.bicep
+param cosmosAccountName string = 'visionary-lab-cosmos'
+param cosmosDatabaseName string = 'VisionaryLabDB'
+param cosmosContainerName string = 'visionarylab'
+
+// Add this module after your storage modules
+// Azure Cosmos DB Account for Visionary Lab
+// This module creates a Cosmos DB account with SQL API for storing Visionary Lab data
+module cosmosDbMod './modules/cosmosDb.bicep' = {
+  name: 'cosmosDbMod'
+  params: {
+    location: location
+    cosmosAccountName: cosmosAccountName
+    databaseName: cosmosDatabaseName
+    containerName: cosmosContainerName
+    deployNew: true // set false to reuse an existing Cosmos DB account
   }
 }
 
@@ -64,7 +82,7 @@ module storageContainerMod './modules/storageAccountContainer.bicep' = {
   params: {
     storageAccountName: storageAccountName
     containerName: 'images'
-    deployNew: true  // set false to reuse an existing container
+    deployNew: true // set false to reuse an existing container
   }
   dependsOn: [
     storageAccountMod
@@ -81,7 +99,7 @@ module llmOpenAiAccount './modules/openAiDeployment.bicep' = {
     ModelType: llmModelType
     ModelVersion: '2024-11-20'
     location: location
-    deployNew: false  // set false to reuse an existing deployment
+    deployNew: false // set false to reuse an existing deployment
   }
   dependsOn: [
     // keyVaultMod
@@ -99,7 +117,7 @@ module imageGenOpenAiAccount './modules/openAiDeployment.bicep' = {
     ModelType: imageGenModelType
     ModelVersion: '2024-11-20'
     location: location
-    deployNew: false  // set false to reuse an existing deployment
+    deployNew: false // set false to reuse an existing deployment
   }
   dependsOn: [
     storageAccountMod
@@ -116,7 +134,7 @@ module containerAppEnvMod './modules/containerAppEnv.bicep' = {
     location: location
     containerAppEnvName: containerAppEnvName
     logAnalyticsWorkspaceName: logAnalyticsWorkspaceName
-    deployNew: true  // set false to reuse an existing environment
+    deployNew: true // set false to reuse an existing environment
   }
 }
 
@@ -131,7 +149,7 @@ module containerAppBackend './modules/containerApp.bicep' = {
     containerAppName: containerAppNameBackend
     containerAppEnvId: containerAppEnvMod.outputs.containerAppEnvId
     targetPort: 80
-    deployNew: true  // set false to reuse an existing container app
+    deployNew: true // set false to reuse an existing container app
     AZURE_BLOB_SERVICE_URL: storageAccountMod.outputs.storageAccountPrimaryEndpoint
     AZURE_STORAGE_ACCOUNT_KEY: storageAccountMod.outputs.storageAccountKey
     AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
@@ -142,10 +160,15 @@ module containerAppBackend './modules/containerApp.bicep' = {
     SORA_AOAI_RESOURCE: soraOpenAiAccountName
     SORA_DEPLOYMENT: soraDeploymentName
     SORA_AOAI_API_KEY: SORA_AOAI_API_KEY
+    COSMOS_ENDPOINT: cosmosDbMod.outputs.cosmosAccountEndpoint
+    COSMOS_DATABASE_NAME: cosmosDbMod.outputs.databaseName
+    COSMOS_CONTAINER_NAME: cosmosDbMod.outputs.containerName
+    COSMOS_DB_KEY: cosmosDbMod.outputs.primaryKey
   }
   dependsOn: [
     storageAccountMod
     storageContainerMod
+    cosmosDbMod
   ]
 }
 
@@ -160,7 +183,7 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     containerAppName: containerAppNameFrontend
     containerAppEnvId: containerAppEnvMod.outputs.containerAppEnvId
     targetPort: 3000
-    deployNew: true  // set false to reuse an existing container app
+    deployNew: true // set false to reuse an existing container app
     AZURE_BLOB_SERVICE_URL: storageAccountMod.outputs.storageAccountPrimaryEndpoint
     AZURE_STORAGE_ACCOUNT_KEY: storageAccountMod.outputs.storageAccountKey
     AZURE_STORAGE_ACCOUNT_NAME: storageAccountName
@@ -170,7 +193,9 @@ module containerAppFrontend './modules/containerApp.bicep' = {
     LLM_AOAI_API_KEY: LLM_AOAI_API_KEY
     API_PROTOCOL: API_PROTOCOL == '' ? 'https' : API_PROTOCOL
     API_PORT: API_PORT == '' ? '443' : API_PORT
-    API_HOSTNAME: API_HOSTNAME == '' ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}' : API_HOSTNAME
+    API_HOSTNAME: API_HOSTNAME == ''
+      ? '${containerAppNameBackend}.${containerAppEnvMod.outputs.containerAppDefaultDomain}'
+      : API_HOSTNAME
   }
   dependsOn: [
     storageAccountMod

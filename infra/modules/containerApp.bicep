@@ -31,8 +31,14 @@ param targetPort int = 80
 param API_PROTOCOL string = 'http'
 param API_HOSTNAME string = 'localhost'
 param API_PORT string = '80'
+// Add these parameters to your containerApp.bicep file
+param COSMOS_ENDPOINT string = ''
+param COSMOS_DATABASE_NAME string = ''
+param COSMOS_CONTAINER_NAME string = ''
+@secure()
+param COSMOS_DB_KEY string = ''
 
-resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
+resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if (deployNew) {
   name: containerAppName
   location: location
   properties: {
@@ -119,7 +125,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
             }
             {
               name: 'API_PORT'
-                value: API_PORT
+              value: API_PORT
             }
             {
               name: 'NEXT_PUBLIC_API_PROTOCOL'
@@ -131,11 +137,27 @@ resource containerApp 'Microsoft.App/containerApps@2022-03-01' = if(deployNew) {
             }
             {
               name: 'NEXT_PUBLIC_API_PORT'
-                value: API_PORT
+              value: API_PORT
             }
             {
               name: 'STORAGE_ACCOUNT_NAME'
               value: AZURE_STORAGE_ACCOUNT_NAME
+            }
+            {
+              name: 'AZURE_COSMOS_DB_ENDPOINT'
+              value: COSMOS_ENDPOINT
+            }
+            {
+              name: 'AZURE_COMOS_DB_ID' // Note: keeping the typo as in your example
+              value: COSMOS_DATABASE_NAME
+            }
+            {
+              name: 'AZURE_COSMOS_CONTAINER_ID'
+              value: COSMOS_CONTAINER_NAME
+            }
+            {
+              name: 'AZURE_COSMOS_DB_KEY'
+              value: COSMOS_DB_KEY
             }
           ]
         }
