@@ -47,7 +47,7 @@ class AzureBlobStorageService:
         from frontend domains
         """
         try:
-            from azure.storage.blob._models import CorsRule
+            from azure.storage.blob import CorsRule
 
             # Define CORS rules
             cors_rules = [
