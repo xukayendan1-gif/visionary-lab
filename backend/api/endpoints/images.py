@@ -213,6 +213,8 @@ async def edit_image(request: ImageEditRequest):
                 params["output_format"] = request.output_format
             if request.output_format in ["webp", "jpeg"] and request.output_compression != 100:
                 params["output_compression"] = request.output_compression
+            if request.input_fidelity and request.input_fidelity != "low":
+                params["input_fidelity"] = request.input_fidelity
             if request.user:
                 params["user"] = request.user
 
@@ -268,11 +270,24 @@ async def edit_image_upload(
     size: str = Form("auto"),
     quality: str = Form("auto"),
     output_format: str = Form("png"),
+    input_fidelity: str = Form("low"),
     image: List[UploadFile] = File(...),
     mask: Optional[UploadFile] = File(None)
 ):
-    """Edit input images uploaded via multipart form data"""
+    """Edit input images uploaded via multipart form data
+
+    Supports input_fidelity parameter for gpt-image-1:
+    - 'low' (default): Standard fidelity, faster processing
+    - 'high': Better reproduction of input image features, additional cost (~$0.04-$0.06 per image)
+    """
     try:
+        # Validate input_fidelity parameter
+        if input_fidelity not in ["low", "high"]:
+            raise HTTPException(
+                status_code=400,
+                detail="input_fidelity must be either 'low' or 'high'"
+            )
+
         # Validate file size for all images
         max_file_size_mb = settings.GPT_IMAGE_MAX_FILE_SIZE_MB
         temp_files = []
@@ -366,6 +381,8 @@ async def edit_image_upload(
             # Add quality parameter for gpt-image-1
             if model == "gpt-image-1":
                 params["quality"] = quality
+                if input_fidelity and input_fidelity != "low":
+                    params["input_fidelity"] = input_fidelity
                 # Note: output_format is not supported for image editing in the OpenAI API
                 # Keeping this commented to document the limitation
                 # if output_format != "png":
