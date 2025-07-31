@@ -49,7 +49,16 @@ class AzureBlobStorageService:
         try:
             from azure.storage.blob import CorsRule
 
-            # Define CORS rules
+            # First, clear any existing CORS rules to avoid conflicts
+            try:
+                print("Clearing existing CORS rules...")
+                self.blob_service_client.set_service_properties(cors=[])
+                print("Existing CORS rules cleared successfully")
+            except Exception as clear_error:
+                print(
+                    f"Warning: Could not clear existing CORS rules: {clear_error}")
+
+            # Define CORS rules with individual origins (not comma-separated)
             cors_rules = [
                 CorsRule(
                     allowed_origins=[
@@ -74,16 +83,21 @@ class AzureBlobStorageService:
                 )
             ]
 
+            print(
+                f"Setting CORS rules with {len(cors_rules[0].allowed_origins)} origins...")
+            print(f"Origins: {cors_rules[0].allowed_origins}")
+
             # Set CORS rules
-            self.blob_service_client.set_service_properties(
-                cors=cors_rules
-            )
+            self.blob_service_client.set_service_properties(cors=cors_rules)
 
             print("Successfully configured CORS for Azure Blob Storage")
 
         except Exception as e:
             print(
                 f"Warning: Could not configure CORS for Azure Blob Storage: {e}")
+            # Print more details for debugging
+            import traceback
+            print(f"Full error traceback: {traceback.format_exc()}")
             # Don't fail if CORS configuration fails, as it might be due to permissions
 
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,

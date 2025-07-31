@@ -603,10 +603,7 @@ export function ImageOverlay({
                             onValueChange={setImageSize}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[145px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[145px] h-8">
                               <div className="flex items-center">
                                 <Maximize className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="1024x1024" />
@@ -635,10 +632,7 @@ export function ImageOverlay({
                             onValueChange={setBackground}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[140px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[140px] h-8">
                               <div className="flex items-center">
                                 <Layers className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Background" />
@@ -666,10 +660,7 @@ export function ImageOverlay({
                             onValueChange={setOutputFormat}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[100px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[100px] h-8">
                               <div className="flex items-center">
                                 <FileType className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Format" />
@@ -699,10 +690,7 @@ export function ImageOverlay({
                             onValueChange={setQuality}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[120px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[120px] h-8">
                               <div className="flex items-center">
                                 <BarChart4 className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="Quality" />
@@ -732,10 +720,7 @@ export function ImageOverlay({
                               onValueChange={setInputFidelity}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[100px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[100px] h-8">
                                 <div className="flex items-center">
                                   <Layers className="h-4 w-4 mr-2" />
                                   <SelectValue placeholder="Fidelity" />
@@ -762,10 +747,7 @@ export function ImageOverlay({
                             onValueChange={setVariations}
                             disabled={isGenerating}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[80px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[80px] h-8">
                               <div className="flex items-center">
                                 <Images className="h-4 w-4 mr-2" />
                                 <SelectValue placeholder="1" />
@@ -806,10 +788,7 @@ export function ImageOverlay({
                               }
                             }}
                           >
-                            <SelectTrigger className={cn(
-                              "w-[130px] h-8",
-                              getControlBgColor()
-                            )}>
+                            <SelectTrigger className="w-[130px] h-8">
                               <div className="flex items-center">
                                 <FolderTree className="h-4 w-4 mr-2 text-primary" />
                                 <SelectValue placeholder="Root" />

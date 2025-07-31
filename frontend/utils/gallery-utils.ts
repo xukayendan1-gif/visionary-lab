@@ -1,5 +1,4 @@
 import { fetchGalleryVideos, GalleryItem, MediaType, fetchGalleryImages } from "@/services/api";
-import { API_BASE_URL } from "@/services/api";
 import { sasTokenService } from "@/services/sas-token";
 
 export interface VideoMetadata {
