@@ -5,12 +5,8 @@ from datetime import datetime
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from azure.cosmos.container import ContainerProxy
 from azure.cosmos.database import DatabaseProxy
-from azure.identity import DefaultAzureCredential, ClientSecretCredential
-from backend.core.config import settings
-import azure.cosmos.cosmos_client as cosmos_client
 from azure.identity import DefaultAzureCredential, CredentialUnavailableError
-from azure.cosmos.exceptions import CosmosHttpResponseError
-import logging
+from backend.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,23 +29,42 @@ class CosmosDBService:
         self.database_id = settings.AZURE_COSMOS_DB_ID
         self.container_id = settings.AZURE_COSMOS_CONTAINER_ID
 
-        # Always use DefaultAzureCredential
-        try:
-            credential = DefaultAzureCredential(logging_enable=True)
-            self.logger.info("DefaultAzureCredential initialized successfully")
+        # Choose authentication method based on USE_MANAGED_IDENTITY setting
+        if settings.USE_MANAGED_IDENTITY:
+            # Use Managed Identity authentication
+            try:
+                credential = DefaultAzureCredential(logging_enable=True)
+                self.logger.info("Using Managed Identity authentication")
+                self.client = CosmosClient(url=self.endpoint, credential=credential)
 
-        except CredentialUnavailableError as e:
-            self.logger.error(f"Credential unavailable: {str(e)}")
-            raise DatabaseError(
-                "Failed to authenticate with Azure: Credential unavailable."
-            )
-        except Exception as e:
-            self.logger.error(f"Unexpected error during authentication: {str(e)}")
-            raise DatabaseError(f"Authentication error: {str(e)}")
+            except CredentialUnavailableError as e:
+                self.logger.error(f"Managed Identity credential unavailable: {str(e)}")
+                raise DatabaseError(
+                    "Failed to authenticate with Azure: Managed Identity credential unavailable."
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"Unexpected error during Managed Identity authentication: {str(e)}"
+                )
+                raise DatabaseError(f"Managed Identity authentication error: {str(e)}")
+        else:
+            # Use key-based authentication
+            if not self.key:
+                self.logger.error(
+                    "Azure Cosmos DB key not provided and USE_MANAGED_IDENTITY is False"
+                )
+                raise DatabaseError(
+                    "Azure Cosmos DB key is required when not using Managed Identity"
+                )
 
-        self.client = cosmos_client.CosmosClient(
-            url=self.endpoint, credential=credential
-        )
+            try:
+                self.logger.info("Using key-based authentication")
+                self.client = CosmosClient(url=self.endpoint, credential=self.key)
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to initialize Cosmos DB client with key: {str(e)}"
+                )
+                raise DatabaseError(f"Key-based authentication error: {str(e)}")
         # Get or create database and container
         self.database = self._get_or_create_database()
         self.container = self._get_or_create_container()

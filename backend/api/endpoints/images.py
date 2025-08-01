@@ -58,13 +58,11 @@ logger = logging.getLogger(__name__)
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
-        if settings.AZURE_COSMOS_DB_ENDPOINT and settings.AZURE_COSMOS_DB_KEY:
+        # Check if we have either managed identity or key-based auth configured
+        if settings.AZURE_COSMOS_DB_ENDPOINT and (settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY):
             return CosmosDBService()
         return None
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(f"Cosmos DB service unavailable: {e}")
         return None
 

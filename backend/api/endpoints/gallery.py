@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 import io
 import re
 import os
+import logging
 from datetime import datetime, timedelta, timezone
 from azure.storage.blob import generate_container_sas, ContainerSasPermissions
 
@@ -32,7 +33,6 @@ from backend.models.gallery import (
     SasTokenResponse,
 )
 from backend.models.metadata_models import AssetMetadataCreateRequest
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,12 +43,12 @@ router = APIRouter()
 def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
-        if settings.AZURE_COSMOS_DB_ENDPOINT and settings.AZURE_COSMOS_DB_KEY:
+        # Check if we have either managed identity or key-based auth configured
+        if settings.AZURE_COSMOS_DB_ENDPOINT and (settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY):
             return CosmosDBService()
         return None
     except Exception as e:
         # Log error but don't fail - Cosmos DB is optional
-
         logger.warning(f"Cosmos DB service unavailable: {e}")
         return None
 
@@ -63,10 +63,18 @@ async def get_gallery_images(
         None, description="Optional folder path to filter assets"
     ),
     tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
-    cosmos_service: CosmosDBService = Depends(get_cosmos_service),
+    cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
 ):
     """Get gallery images from Cosmos DB metadata ONLY"""
     try:
+        # Check if Cosmos DB service is available
+        if not cosmos_service:
+            logger.error("Cosmos DB service is not available")
+            raise HTTPException(
+                status_code=503, 
+                detail="Cosmos DB service is not available. Please check your configuration."
+            )
+
         # Parse tags if provided
         tag_list = None
         if tags:
@@ -128,9 +136,6 @@ async def get_gallery_images(
             folders=None,
         )
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.error(f"Error retrieving images from metadata: {str(e)}")
         raise HTTPException(
             status_code=500,
