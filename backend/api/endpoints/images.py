@@ -543,6 +543,10 @@ async def save_generated_images(
                     img_format = img.format or "PNG"
                     has_transparency = img.mode == 'RGBA' and 'A' in img.getbands()
 
+                    # Add width and height to metadata
+                    metadata["width"] = str(img.width)
+                    metadata["height"] = str(img.height)
+
                     if has_transparency:
                         metadata["has_transparency"] = "true"
                         # Ensure PNG format for transparent images
@@ -597,9 +601,14 @@ async def save_generated_images(
                     "Content-Type", "image/png")
                 ext = content_type.split("/")[-1]
 
-                # Check if image has transparency using PIL
+                # Check if image has transparency using PIL and get dimensions
                 with Image.open(img_file) as img:
                     has_transparency = img.mode == 'RGBA' and 'A' in img.getbands()
+
+                    # Add width and height to metadata
+                    metadata["width"] = str(img.width)
+                    metadata["height"] = str(img.height)
+
                     if has_transparency:
                         metadata["has_transparency"] = "true"
 

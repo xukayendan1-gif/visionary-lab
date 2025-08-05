@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from typing import Dict, BinaryIO, Optional, Union, List, Tuple
 from fastapi import UploadFile
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -7,6 +8,8 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from datetime import datetime
 
 from backend.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AzureBlobStorageService:
@@ -379,6 +382,21 @@ class AzureBlobStorageService:
 
             # Upload the file
             file_content = await file.read()
+
+            # For images, add width and height to metadata if not already present
+            if asset_type == "image" and "width" not in upload_metadata:
+                try:
+                    from PIL import Image
+                    import io
+
+                    # Get image dimensions using PIL
+                    with Image.open(io.BytesIO(file_content)) as img:
+                        upload_metadata["width"] = str(img.width)
+                        upload_metadata["height"] = str(img.height)
+                except Exception as e:
+                    # If we can't get dimensions, log but continue
+                    logger.warning(f"Could not get image dimensions: {str(e)}")
+
             blob_client.upload_blob(
                 data=file_content,
                 content_settings=content_settings,

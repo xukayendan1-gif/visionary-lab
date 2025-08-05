@@ -132,15 +132,7 @@ export function ImageOverlay({
     }
   }, [background, outputFormat]);
 
-  // Effect to show cost warning when high fidelity is selected
-  useEffect(() => {
-    if (inputFidelity === "high" && sourceImages.length > 0) {
-      toast.info("High input fidelity selected", {
-        description: "This will provide better reproduction of input image features but incurs additional cost (~$0.04-$0.06 per image)",
-        duration: 4000,
-      });
-    }
-  }, [inputFidelity, sourceImages.length]);
+
 
   // Get overlay background color based on theme
   const getOverlayBgColor = () => {
@@ -399,8 +391,19 @@ export function ImageOverlay({
                     <img 
                       src={URL.createObjectURL(img)} 
                       alt={`Image ${index + 1}`} 
-                      className="w-12 h-12 object-cover rounded-md border border-gray-500/30"
+                      className={cn(
+                        "w-12 h-12 object-cover rounded-md border transition-all duration-200",
+                        index === 0 && sourceImages.length > 1 
+                          ? "border-sky-300 ring-2 ring-sky-300/50 shadow-lg shadow-sky-300/25 animate-pulse" 
+                          : "border-gray-500/30"
+                      )}
                     />
+                    {/* Primary image indicator */}
+                    {index === 0 && sourceImages.length > 1 && (
+                      <div className="absolute -top-1 -right-1 bg-sky-400 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                        1
+                      </div>
+                    )}
                     <Button 
                       onClick={() => handleRemoveImage(index)}
                       className={cn(
@@ -734,7 +737,7 @@ export function ImageOverlay({
                           </div>
                         </TooltipTrigger>
                         <TooltipContent side="right" className="font-medium">
-                          <p>Input fidelity for image editing - High provides better reproduction of input image features but costs more</p>
+                          <p>Input fidelity for image editing - High provides better reproduction of the highlighted image with blue frame</p>
                         </TooltipContent>
                       </Tooltip>
                     )}
