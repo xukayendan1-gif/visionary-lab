@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { SlideTransition } from "@/components/ui/page-transition";
 import { MultiSelectActionBar } from "@/components/multi-select-action-bar";
 import { MediaType, deleteMultipleGalleryAssets, moveMultipleAssets } from "@/services/api";
+import { RowBasedMasonryGrid } from "@/components/RowBasedMasonryGrid";
 
 // Component that safely uses useSearchParams
 function SearchParamsWrapper({ onFolderChange }: { onFolderChange: (folder: string | null) => void }) {
@@ -279,17 +280,15 @@ export default function GalleryPage() {
   // Generate skeleton placeholders for loading state
   const renderSkeletons = (count: number) => {
     return Array.from({ length: count }).map((_, index) => (
-      <div key={`skeleton-${index}`} className="mb-6">
-        <Card className="overflow-hidden bg-black p-0 border-0 rounded-xl">
-          <AspectRatio ratio={16/9} className="bg-muted">
-            <Skeleton className="h-full w-full rounded-none" />
-          </AspectRatio>
-          <div className="p-4 space-y-2">
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-3 w-full" />
-          </div>
-        </Card>
-      </div>
+      <Card key={`skeleton-${index}`} className="overflow-hidden bg-black p-0 border-0 rounded-xl w-full">
+        <AspectRatio ratio={16/9} className="bg-muted">
+          <Skeleton className="h-full w-full rounded-none" />
+        </AspectRatio>
+        <div className="p-4 space-y-2">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-full" />
+        </div>
+      </Card>
     ));
   };
 
@@ -408,7 +407,7 @@ export default function GalleryPage() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div>
                 <Suspense fallback={null}>
                   <SearchParamsWrapper onFolderChange={setFolderParam} />
                 </Suspense>
@@ -425,25 +424,29 @@ export default function GalleryPage() {
                 )}
 
                 {loading ? (
-                  renderSkeletons(12)
+                  <RowBasedMasonryGrid columns={3} gap={4}>
+                    {renderSkeletons(12)}
+                  </RowBasedMasonryGrid>
                 ) : videos.length > 0 ? (
-                  videos.map((video) => (
-                    <VideoCard
-                      key={video.id}
-                      src={video.src}
-                      description={video.description}
-                      blobName={video.name}
-                      id={video.id}
-                      tags={generateTagsForVideo(video, index)}
-                      autoPlay={autoPlay}
-                      selectionMode={selectionMode}
-                      selected={selectedItems.includes(video.id)}
-                      onSelect={handleItemSelect}
-                      onDelete={() => handleVideoDeleted(video.id)}
-                    />
-                  ))
+                  <RowBasedMasonryGrid columns={3} gap={4}>
+                    {videos.map((video) => (
+                      <VideoCard
+                        key={video.id}
+                        src={video.src}
+                        description={video.description}
+                        blobName={video.name}
+                        id={video.id}
+                        tags={generateTagsForVideo(video)}
+                        autoPlay={autoPlay}
+                        selectionMode={selectionMode}
+                        selected={selectedItems.includes(video.id)}
+                        onSelect={handleItemSelect}
+                        onDelete={() => handleVideoDeleted(video.id)}
+                      />
+                    ))}
+                  </RowBasedMasonryGrid>
                 ) : (
-                  <div className="col-span-full flex flex-col items-center justify-center py-16 text-center bg-muted rounded-xl">
+                  <div className="flex flex-col items-center justify-center py-16 text-center bg-muted rounded-xl">
                     <FileVideo className="h-16 w-16 text-muted-foreground mb-6" />
                     <h3 className="text-xl font-medium mb-2">No Videos Found</h3>
                     <p className="text-muted-foreground max-w-md">

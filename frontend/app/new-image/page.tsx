@@ -20,6 +20,7 @@ import { PageTransition } from "@/components/ui/page-transition";
 import { ImageDetailView } from "@/components/ImageDetailView";
 import { MultiSelectActionBar } from "@/components/multi-select-action-bar";
 import { MediaType, deleteMultipleGalleryAssets, moveMultipleAssets } from "@/services/api";
+import { RowBasedMasonryGrid } from "@/components/RowBasedMasonryGrid";
 
 // For the 'any' type issue, let's define a proper interface
 interface GalleryImageItem {

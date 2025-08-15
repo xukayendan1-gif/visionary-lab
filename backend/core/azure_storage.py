@@ -61,19 +61,16 @@ class AzureBlobStorageService:
                 print(
                     f"Warning: Could not clear existing CORS rules: {clear_error}")
 
-            # Define CORS rules with individual origins (not comma-separated)
+            # Define CORS rules - using just wildcard since mixing specific origins with wildcard isn't allowed
             cors_rules = [
                 CorsRule(
-                    allowed_origins=[
-                        "http://localhost:3000",  # Local development
-                        "https://localhost:3000",  # Local development with HTTPS
-                        "http://127.0.0.1:3000",  # Alternative local development
-                        "https://127.0.0.1:3000",  # Alternative local development with HTTPS
-                        "*"  # Allow all origins for now - should be restricted in production
-                    ],
+                    allowed_origins=["*"],  # Allow all origins
                     allowed_methods=[
                         "GET",
                         "HEAD",
+                        "PUT",
+                        "POST",
+                        "DELETE",
                         "OPTIONS"
                     ],
                     allowed_headers=[
