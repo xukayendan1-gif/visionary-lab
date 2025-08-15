@@ -1701,4 +1701,186 @@ export async function analyzeAndUpdateVideoMetadata(videoName: string): Promise<
     console.error("Error in analyzeAndUpdateVideoMetadata:", error);
     throw error;
   }
+}
+
+/**
+ * Delete multiple assets from the gallery
+ */
+export async function deleteMultipleGalleryAssets(
+  blobNames: string[], 
+  mediaType: MediaType
+): Promise<{success: boolean, message: string, results: {[key: string]: boolean}}> {
+  const url = `${API_BASE_URL}/batch/delete`;
+  
+  if (DEBUG) {
+    console.log(`Deleting multiple gallery assets: ${blobNames.length} items of type ${mediaType}`);
+    console.log(`POST ${url}`);
+  }
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        blob_names: blobNames,
+        media_type: mediaType
+      }),
+    });
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete assets: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (DEBUG) {
+      console.log('Batch delete response data:', data);
+    }
+    
+    return {
+      success: data.success,
+      message: data.message,
+      results: data.results || {}
+    };
+  } catch (error) {
+    console.error("Error in deleteMultipleGalleryAssets:", error);
+    
+    // Fallback to sequential deletion if the batch endpoint fails
+    console.log("Falling back to sequential deletion");
+    
+    const results: {[key: string]: boolean} = {};
+    let successCount = 0;
+    let failureCount = 0;
+    
+    // Process deletions sequentially as a fallback
+    for (const blobName of blobNames) {
+      try {
+        const result = await deleteGalleryAsset(blobName, mediaType);
+        results[blobName] = result.success;
+        
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      } catch (e) {
+        console.error(`Error deleting asset ${blobName}:`, e);
+        results[blobName] = false;
+        failureCount++;
+      }
+    }
+    
+    // Determine overall success based on individual results
+    const success = failureCount === 0;
+    const message = successCount > 0 
+      ? `Successfully deleted ${successCount} ${mediaType}${successCount !== 1 ? 's' : ''}`
+      : "No items were deleted";
+    
+    return {
+      success,
+      message: failureCount > 0 ? `${message} (${failureCount} failed)` : message,
+      results
+    };
+  }
+}
+
+/**
+ * Move multiple assets to a different folder
+ */
+export async function moveMultipleAssets(
+  blobNames: string[],
+  targetFolder: string,
+  mediaType: MediaType
+): Promise<{success: boolean, message: string, results: {[key: string]: boolean}}> {
+  const url = `${API_BASE_URL}/batch/move`;
+  
+  if (DEBUG) {
+    console.log(`Moving multiple assets (${blobNames.length} items) to folder ${targetFolder}`);
+    console.log(`POST ${url}`);
+  }
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        blob_names: blobNames,
+        target_folder: targetFolder,
+        media_type: mediaType
+      }),
+    });
+
+    if (DEBUG) {
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to move assets: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (DEBUG) {
+      console.log('Batch move response data:', data);
+    }
+    
+    return {
+      success: data.success,
+      message: data.message,
+      results: data.results || {}
+    };
+  } catch (error) {
+    console.error("Error in moveMultipleAssets:", error);
+    
+    // Fallback to sequential moves if the batch endpoint fails
+    console.log("Falling back to sequential moves");
+    
+    const results: {[key: string]: boolean} = {};
+    let successCount = 0;
+    let failureCount = 0;
+    
+    // Process moves sequentially as a fallback
+    for (const blobName of blobNames) {
+      try {
+        const result = await moveAsset(blobName, targetFolder, mediaType);
+        results[blobName] = result.success;
+        
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      } catch (e) {
+        console.error(`Error moving asset ${blobName}:`, e);
+        results[blobName] = false;
+        failureCount++;
+      }
+    }
+    
+    // Determine overall success based on individual results
+    const success = failureCount === 0;
+    const message = successCount > 0 
+      ? `Successfully moved ${successCount} ${mediaType}${successCount !== 1 ? 's' : ''} to ${targetFolder || "root"}`
+      : "No items were moved";
+    
+    return {
+      success,
+      message: failureCount > 0 ? `${message} (${failureCount} failed)` : message,
+      results
+    };
+  }
 } 
