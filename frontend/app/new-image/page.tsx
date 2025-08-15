@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { PageHeader } from "@/components/page-header";
-import { Loader2, RefreshCw, Clock, ImageIcon } from "lucide-react";
+import { Loader2, RefreshCw, Clock, ImageIcon, CheckSquare } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -18,6 +18,8 @@ import { useSearchParams } from "next/navigation";
 import { FolderIcon } from "lucide-react";
 import { PageTransition } from "@/components/ui/page-transition";
 import { ImageDetailView } from "@/components/ImageDetailView";
+import { MultiSelectActionBar } from "@/components/multi-select-action-bar";
+import { MediaType, deleteMultipleGalleryAssets, moveMultipleAssets } from "@/services/api";
 
 // For the 'any' type issue, let's define a proper interface
 interface GalleryImageItem {
@@ -27,7 +29,12 @@ interface GalleryImageItem {
   metadata?: {
     tags?: string;
     description?: string;
-    [key: string]: unknown;
+    prompt?: string;
+    has_transparency?: string;
+    width?: string;
+    height?: string;
+    createdAt?: string;
+    [key: string]: string | number | boolean | undefined;
   };
   [key: string]: unknown;
 }
@@ -61,6 +68,9 @@ function NewImagePageContent() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [lastRefreshedText, setLastRefreshedText] = useState<string>("Never refreshed");
   const [fullscreenImage, setFullscreenImage] = useState<ImageMetadata | null>(null);
+  // Multi-select state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const limit = 50;
 
@@ -103,8 +113,17 @@ function NewImagePageContent() {
           src: image.src,
           id: image.id,
           name: image.name,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          metadata: image.originalItem.metadata as any
+          // Convert metadata to our expected format
+          metadata: image.originalItem && image.originalItem.metadata ? {
+            ...(image.originalItem.metadata as any),
+            tags: image.originalItem.metadata.tags,
+            description: image.originalItem.metadata.description,
+            prompt: image.originalItem.metadata.prompt,
+            has_transparency: image.originalItem.metadata.has_transparency,
+            width: image.originalItem.metadata.width,
+            height: image.originalItem.metadata.height,
+            createdAt: image.originalItem.metadata.createdAt
+          } : undefined
         },
         width: image.width,
         height: image.height,
@@ -112,14 +131,14 @@ function NewImagePageContent() {
       }));
       
       if (resetImages) {
-        setImages(fetchedImages);
+        setImages(fetchedImages as any);
         
         // Update last refreshed time
         const now = new Date();
         setLastRefreshed(now);
         setLastRefreshedText(`Last refreshed ${formatDistanceToNow(now, { addSuffix: true })}`);
       } else {
-        setImages(prevImages => [...prevImages, ...fetchedImages]);
+        setImages(prevImages => [...prevImages, ...fetchedImages] as any);
       }
       
       // If we got fewer images than the limit, there are no more images to load
@@ -368,7 +387,7 @@ function NewImagePageContent() {
       
       if (fetchedImages.length > 0) {
         // Instead of trying to compare and merge, just set the new images
-        setImages(fetchedImages);
+        setImages(fetchedImages as any);
         
         // Update last refreshed time
         const now = new Date();
@@ -397,6 +416,109 @@ function NewImagePageContent() {
     }
   }, [limit, folderPath, isRefreshing]);
 
+  // Function to toggle selection mode
+  const toggleSelectionMode = () => {
+    setSelectionMode(prev => !prev);
+    if (selectionMode) {
+      // Clear selection when exiting selection mode
+      setSelectedItems([]);
+    }
+  };
+
+  // Function to handle item selection
+  const handleItemSelect = (id: string, selected: boolean) => {
+    if (selected) {
+      // Use Set to ensure uniqueness of ids
+      const uniqueSet = new Set([...selectedItems, id]);
+      setSelectedItems(Array.from(uniqueSet));
+    } else {
+      setSelectedItems(prev => prev.filter(itemId => itemId !== id));
+    }
+  };
+
+  // Function to clear all selected items
+  const clearSelection = () => {
+    setSelectedItems([]);
+  };
+
+  // Function to delete all selected items
+  const deleteSelectedItems = async () => {
+    if (selectedItems.length === 0) return;
+    
+    // Get unique selected items
+    const uniqueSelectedItems = Array.from(new Set(selectedItems));
+    
+    // Get blob names from selected item IDs
+    const selectedBlobNames = images
+      .filter(image => uniqueSelectedItems.includes(image.id))
+      .map(image => image.name);
+    
+    if (selectedBlobNames.length === 0) {
+      toast.error("No valid items to delete");
+      return;
+    }
+    
+    const result = await deleteMultipleGalleryAssets(selectedBlobNames, MediaType.IMAGE);
+    
+    if (result.success) {
+      // Remove deleted images from state
+      setImages(prevImages => 
+        prevImages.filter(image => !selectedItems.includes(image.id))
+      );
+      
+      // Clear selection
+      setSelectedItems([]);
+      
+      // Load more images if needed
+      if (hasMore && images.length < limit * 2) {
+        loadMoreImages();
+      }
+    } else {
+      toast.error("Error deleting some items", {
+        description: result.message
+      });
+    }
+  };
+
+  // Function to move all selected items
+  const moveSelectedItems = async (targetFolder: string) => {
+    if (selectedItems.length === 0) return;
+    
+    // Get unique selected items
+    const uniqueSelectedItems = Array.from(new Set(selectedItems));
+    
+    // Get blob names from selected item IDs
+    const selectedBlobNames = images
+      .filter(image => uniqueSelectedItems.includes(image.id))
+      .map(image => image.name);
+    
+    if (selectedBlobNames.length === 0) {
+      toast.error("No valid items to move");
+      return;
+    }
+    
+    const result = await moveMultipleAssets(selectedBlobNames, targetFolder, MediaType.IMAGE);
+    
+    if (result.success) {
+      // Remove moved images from state
+      setImages(prevImages => 
+        prevImages.filter(image => !selectedItems.includes(image.id))
+      );
+      
+      // Clear selection
+      setSelectedItems([]);
+      
+      // Load more images if needed
+      if (hasMore && images.length < limit * 2) {
+        loadMoreImages();
+      }
+    } else {
+      toast.error("Error moving some items", {
+        description: result.message
+      });
+    }
+  };
+
 
 
   return (
@@ -422,6 +544,17 @@ function NewImagePageContent() {
             </div>
             
             <div className="flex items-center space-x-2">
+              <Button
+                variant={selectionMode ? "default" : "outline"}
+                size="sm"
+                onClick={toggleSelectionMode}
+                className="mr-2 font-medium"
+                style={{ minWidth: "120px" }}
+              >
+                <CheckSquare className="h-4 w-4 mr-2" />
+                {selectionMode ? 'Cancel Selection' : 'Select Items'}
+              </Button>
+
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -473,9 +606,9 @@ function NewImagePageContent() {
                 {images.map((image, index) => (
                   <div key={image.id} className="break-inside-avoid mb-4">
                     <ImageGalleryCard
-                      image={image}
+                      image={image as any}
                       index={index}
-                      onClick={() => handleImageClick(image)}
+                      onClick={selectionMode ? undefined : () => handleImageClick(image)}
                       onDelete={(deletedImageId) => {
                         // Remove the deleted image from the state
                         setImages(prevImages => prevImages.filter(img => img.id !== deletedImageId));
@@ -504,6 +637,9 @@ function NewImagePageContent() {
                           description: "The image was moved to another folder"
                         });
                       }}
+                      selectionMode={selectionMode}
+                      selected={selectedItems.includes(image.id)}
+                      onSelect={handleItemSelect}
                     />
                   </div>
                 ))}
@@ -562,13 +698,24 @@ function NewImagePageContent() {
             onImagesSaved={(count) => loadNewImages(count || 5)} 
           />
         </div>
+
+        {/* Multi-select action bar */}
+        {selectionMode && selectedItems.length > 0 && (
+          <MultiSelectActionBar
+            selectedItems={selectedItems}
+            mediaType={MediaType.IMAGE}
+            onClearSelection={clearSelection}
+            onDeleteSelected={deleteSelectedItems}
+            onMoveSelected={moveSelectedItems}
+          />
+        )}
       </div>
       
       {/* Full-screen Image Viewer Modal */}
       {fullscreenImage && (
         <ImageDetailView
-          image={fullscreenImage}
-          images={images}
+          image={fullscreenImage as any}
+          images={images as any}
           onClose={() => setFullscreenImage(null)}
           onDelete={(imageId) => {
             // Remove the deleted image from the state

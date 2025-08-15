@@ -33,6 +33,9 @@ interface VideoCardProps {
   onMove?: () => void;
   onClick?: () => void;
   autoPlay?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string, selected: boolean) => void;
 }
 
 export function VideoCard({
@@ -45,6 +48,10 @@ export function VideoCard({
   onDelete,
   onClick,
   autoPlay = true,
+  id,
+  selectionMode = false,
+  selected = false,
+  onSelect
 }: VideoCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -441,86 +448,124 @@ export function VideoCard({
         className={cn(
           "overflow-hidden border rounded-xl group hover:shadow-md transition-all duration-200 h-full p-0 w-full bg-card",
           className,
-          onClick && "cursor-pointer"
+          onClick && !selectionMode && "cursor-pointer",
+          selectionMode && "cursor-pointer",
+          selected && "ring-2 ring-primary"
         )}
       >
-        {/* Add dropdown menu - only visible on hover */}
-        <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <DropdownMenu onOpenChange={handleDropdownOpen}>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/30 hover:bg-black/40 text-white">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger disabled={isMoving || loadingFolders}>
-                  {isMoving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Moving...
-                    </>
-                  ) : (
-                    <>
-                      <FolderUp className="h-4 w-4 mr-2" />
-                      Move to folder
-                    </>
-                  )}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {loadingFolders ? (
-                    <DropdownMenuItem disabled>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Loading folders...
-                    </DropdownMenuItem>
-                  ) : folders.length > 0 ? (
-                    folders.map((folder) => (
-                      <DropdownMenuItem
-                        key={folder}
-                        onClick={() => handleMove(folder)}
-                      >
-                        {folder || "Root"}
+        {/* Selection checkbox - only visible in selection mode */}
+        {selectionMode && (
+          <div 
+            className="absolute top-2 left-2 z-20 bg-background/90 rounded-md p-1 shadow-md border"
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent event from bubbling to parent
+              if (onSelect && id) {
+                onSelect(id, !selected);
+              }
+            }}
+          >
+            <input 
+              type="checkbox" 
+              checked={selected}
+              onChange={(e) => {
+                e.stopPropagation(); // Prevent event from bubbling to parent
+                if (onSelect && id) {
+                  onSelect(id, !selected);
+                }
+              }}
+              className="h-5 w-5 cursor-pointer"
+            />
+          </div>
+        )}
+        
+        {/* Add dropdown menu - only visible on hover when not in selection mode */}
+        {!selectionMode && (
+          <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <DropdownMenu onOpenChange={handleDropdownOpen}>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/30 hover:bg-black/40 text-white">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger disabled={isMoving || loadingFolders}>
+                    {isMoving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Moving...
+                      </>
+                    ) : (
+                      <>
+                        <FolderUp className="h-4 w-4 mr-2" />
+                        Move to folder
+                      </>
+                    )}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {loadingFolders ? (
+                      <DropdownMenuItem disabled>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Loading folders...
                       </DropdownMenuItem>
-                    ))
+                    ) : folders.length > 0 ? (
+                      folders.map((folder) => (
+                        <DropdownMenuItem
+                          key={folder}
+                          onClick={() => handleMove(folder)}
+                        >
+                          {folder || "Root"}
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <DropdownMenuItem disabled>
+                        No folders available
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                <DropdownMenuItem onClick={handleDownload}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuItem 
+                  variant="destructive" 
+                  className="text-destructive cursor-pointer"
+                  disabled={isDeleting}
+                  onClick={handleDelete}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
                   ) : (
-                    <DropdownMenuItem disabled>
-                      No folders available
-                    </DropdownMenuItem>
+                    <>
+                      <Trash className="h-4 w-4 mr-2" />
+                      Delete
+                    </>
                   )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              
-              <DropdownMenuItem onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </DropdownMenuItem>
-              
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuItem 
-                variant="destructive" 
-                className="text-destructive cursor-pointer"
-                disabled={isDeleting}
-                onClick={handleDelete}
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash className="h-4 w-4 mr-2" />
-                    Delete
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
         
         <div 
           onClick={(e) => {
+            // If in selection mode, toggle selection
+            if (selectionMode) {
+              e.stopPropagation();
+              if (onSelect && id) {
+                onSelect(id, !selected);
+              }
+              return;
+            }
+            
             // Don't trigger onClick if the user is clicking on the video controls
             if ((e.target as HTMLElement).closest('.video-controls')) {
               return;

@@ -47,9 +47,21 @@ interface ImageGalleryCardProps {
   onClick?: () => void;
   onDelete?: (imageId: string) => void;
   onMove?: (imageId: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onSelect?: (imageId: string, selected: boolean) => void;
 }
 
-export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: ImageGalleryCardProps) {
+export function ImageGalleryCard({ 
+  image, 
+  index, 
+  onClick, 
+  onDelete, 
+  onMove, 
+  selectionMode = false,
+  selected = false,
+  onSelect
+}: ImageGalleryCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
@@ -265,79 +277,125 @@ export function ImageGalleryCard({ image, index, onClick, onDelete, onMove }: Im
       className="relative w-full mb-0"
     >
       <Card 
-        className="overflow-hidden border rounded-xl group hover:shadow-md transition-all duration-200 h-full p-0 w-full bg-card"
+        className={`overflow-hidden border rounded-xl group hover:shadow-md transition-all duration-200 h-full p-0 w-full bg-card ${selected ? 'ring-2 ring-primary' : ''}`}
       >
-        {/* Add dropdown menu - only visible on hover */}
-        <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <DropdownMenu onOpenChange={handleDropdownOpen}>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/30 hover:bg-black/40 text-white">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger disabled={isMoving || loadingFolders}>
-                  {isMoving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Moving...
-                    </>
-                  ) : (
-                    <>
-                      <FolderUp className="h-4 w-4 mr-2" />
-                      Move to folder
-                    </>
-                  )}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {loadingFolders ? (
-                    <DropdownMenuItem disabled>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Loading folders...
-                    </DropdownMenuItem>
-                  ) : folders.length > 0 ? (
-                    folders.map((folder) => (
-                      <DropdownMenuItem
-                        key={folder}
-                        onClick={() => handleMove(folder)}
-                      >
-                        {folder || "Root"}
-                      </DropdownMenuItem>
-                    ))
-                  ) : (
-                    <DropdownMenuItem disabled>
-                      No folders available
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuItem 
-                variant="destructive" 
-                className="text-destructive cursor-pointer"
-                disabled={isDeleting}
-                onClick={handleDelete}
-              >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {/* Selection checkbox - only visible in selection mode */}
+        {selectionMode && (
+          <div 
+            className="absolute top-2 left-2 z-20 bg-background/90 rounded-md p-1 shadow-md border"
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent triggering the card click
+              if (onSelect && image.id) {
+                onSelect(image.id, !selected);
+              }
+            }}
+          >
+            <input 
+              type="checkbox" 
+              checked={selected}
+              onChange={(e) => {
+                e.stopPropagation(); // Prevent triggering other handlers
+                if (onSelect && image.id) {
+                  onSelect(image.id, !selected);
+                }
+              }}
+              className="h-5 w-5 cursor-pointer"
+            />
+          </div>
+        )}
         
-        <div onClick={onClick} className="cursor-pointer w-full h-full">
+        {/* Add dropdown menu - only visible on hover and when not in selection mode */}
+        {!selectionMode && (
+          <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <DropdownMenu onOpenChange={handleDropdownOpen}>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/30 hover:bg-black/40 text-white">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger disabled={isMoving || loadingFolders}>
+                    {isMoving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Moving...
+                      </>
+                    ) : (
+                      <>
+                        <FolderUp className="h-4 w-4 mr-2" />
+                        Move to folder
+                      </>
+                    )}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {loadingFolders ? (
+                      <DropdownMenuItem disabled>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Loading folders...
+                      </DropdownMenuItem>
+                    ) : folders.length > 0 ? (
+                      folders.map((folder) => (
+                        <DropdownMenuItem
+                          key={folder}
+                          onClick={() => handleMove(folder)}
+                        >
+                          {folder || "Root"}
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <DropdownMenuItem disabled>
+                        No folders available
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuItem 
+                  variant="destructive" 
+                  className="text-destructive cursor-pointer"
+                  disabled={isDeleting}
+                  onClick={handleDelete}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </>
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+        
+        <div 
+          onClick={(e) => {
+            // If in selection mode, toggle selection only if clicking the card (not the checkbox)
+            if (selectionMode) {
+              const isCheckboxClick = e.target instanceof HTMLElement && 
+                (e.target.tagName === 'INPUT' || e.target.closest('[role="checkbox"]'));
+              
+              // Only process the click if it's not on the checkbox
+              if (!isCheckboxClick && onSelect && image.id) {
+                e.stopPropagation();
+                onSelect(image.id, !selected);
+              }
+              return;
+            }
+            
+            // Otherwise proceed with normal click behavior
+            if (onClick) onClick();
+          }} 
+          className="cursor-pointer w-full h-full"
+        >
           <AspectRatio ratio={getAspectRatio()} className="bg-muted w-full h-full">
             {loading && (
               <div className="absolute inset-0 w-full h-full">

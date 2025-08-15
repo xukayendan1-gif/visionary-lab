@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -103,3 +103,33 @@ class SasTokenResponse(BaseModel):
     video_container_url: str
     image_container_url: str
     expiry: datetime
+
+
+class BatchDeleteRequest(BaseModel):
+    """Request model for batch deletion of assets"""
+    blob_names: List[str] = Field(..., description="List of blob names to delete")
+    media_type: Optional[MediaType] = Field(None, description="Type of media (image or video) to determine container")
+    container: Optional[str] = Field(None, description="Container name (images or videos) - overrides media_type if provided")
+
+
+class BatchDeleteResponse(BaseResponse):
+    """Response model for batch deletion operations"""
+    total: int = Field(..., description="Total number of assets in the batch")
+    results: Dict[str, bool] = Field(..., description="Results of deletion operations by blob name")
+    background_task: bool = Field(False, description="Whether the operation was performed as a background task")
+
+
+class BatchMoveRequest(BaseModel):
+    """Request model for batch move of assets"""
+    blob_names: List[str] = Field(..., description="List of blob names to move")
+    target_folder: str = Field(..., description="Target folder to move assets to")
+    media_type: Optional[MediaType] = Field(None, description="Type of media (image or video) to determine container")
+    container: Optional[str] = Field(None, description="Container name (images or videos) - overrides media_type if provided")
+
+
+class BatchMoveResponse(BaseResponse):
+    """Response model for batch move operations"""
+    total: int = Field(..., description="Total number of assets in the batch")
+    results: Dict[str, bool] = Field(..., description="Results of move operations by blob name")
+    target_folder: str = Field(..., description="Target folder the assets were moved to")
+    background_task: bool = Field(False, description="Whether the operation was performed as a background task")

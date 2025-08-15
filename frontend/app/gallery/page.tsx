@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { PageHeader } from "@/components/page-header";
 import { fetchVideos, VideoMetadata } from "@/utils/gallery-utils";
-import { Loader2, RefreshCw, Clock, Video, VideoOff, FolderIcon, FileVideo } from "lucide-react";
+import { Loader2, RefreshCw, Clock, Video, VideoOff, FolderIcon, FileVideo, CheckSquare } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -15,6 +15,8 @@ import { formatDistanceToNow } from "date-fns";
 import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { SlideTransition } from "@/components/ui/page-transition";
+import { MultiSelectActionBar } from "@/components/multi-select-action-bar";
+import { MediaType, deleteMultipleGalleryAssets, moveMultipleAssets } from "@/services/api";
 
 // Component that safely uses useSearchParams
 function SearchParamsWrapper({ onFolderChange }: { onFolderChange: (folder: string | null) => void }) {
@@ -43,6 +45,10 @@ export default function GalleryPage() {
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [lastRefreshedText, setLastRefreshedText] = useState<string>("Never refreshed");
+  // Multi-select state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  
   const limit = 50;
 
   const loadVideos = async (resetVideos = true, isAutoRefresh = false) => {
@@ -161,6 +167,109 @@ export default function GalleryPage() {
     }
   };
 
+  // Function to toggle selection mode
+  const toggleSelectionMode = () => {
+    setSelectionMode(prev => !prev);
+    if (selectionMode) {
+      // Clear selection when exiting selection mode
+      setSelectedItems([]);
+    }
+  };
+
+  // Function to handle item selection
+  const handleItemSelect = (id: string, selected: boolean) => {
+    if (selected) {
+      // Use Set to ensure uniqueness of ids
+      const uniqueSet = new Set([...selectedItems, id]);
+      setSelectedItems(Array.from(uniqueSet));
+    } else {
+      setSelectedItems(prev => prev.filter(itemId => itemId !== id));
+    }
+  };
+
+  // Function to clear all selected items
+  const clearSelection = () => {
+    setSelectedItems([]);
+  };
+
+  // Function to delete all selected items
+  const deleteSelectedItems = async () => {
+    if (selectedItems.length === 0) return;
+    
+    // Get unique selected items
+    const uniqueSelectedItems = Array.from(new Set(selectedItems));
+    
+    // Get blob names from selected item IDs
+    const selectedBlobNames = videos
+      .filter(video => uniqueSelectedItems.includes(video.id))
+      .map(video => video.name);
+    
+    if (selectedBlobNames.length === 0) {
+      toast.error("No valid items to delete");
+      return;
+    }
+    
+    const result = await deleteMultipleGalleryAssets(selectedBlobNames, MediaType.VIDEO);
+    
+    if (result.success) {
+      // Remove deleted videos from state
+      setVideos(prevVideos => 
+        prevVideos.filter(video => !uniqueSelectedItems.includes(video.id))
+      );
+      
+      // Clear selection
+      setSelectedItems([]);
+      
+      // Load more videos if needed
+      if (hasMore && videos.length < limit * 2) {
+        loadMoreVideos();
+      }
+    } else {
+      toast.error("Error deleting some items", {
+        description: result.message
+      });
+    }
+  };
+
+  // Function to move all selected items
+  const moveSelectedItems = async (targetFolder: string) => {
+    if (selectedItems.length === 0) return;
+    
+    // Get unique selected items
+    const uniqueSelectedItems = Array.from(new Set(selectedItems));
+    
+    // Get blob names from selected item IDs
+    const selectedBlobNames = videos
+      .filter(video => uniqueSelectedItems.includes(video.id))
+      .map(video => video.name);
+    
+    if (selectedBlobNames.length === 0) {
+      toast.error("No valid items to move");
+      return;
+    }
+    
+    const result = await moveMultipleAssets(selectedBlobNames, targetFolder, MediaType.VIDEO);
+    
+    if (result.success) {
+      // Remove moved videos from state
+      setVideos(prevVideos => 
+        prevVideos.filter(video => !uniqueSelectedItems.includes(video.id))
+      );
+      
+      // Clear selection
+      setSelectedItems([]);
+      
+      // Load more videos if needed
+      if (hasMore && videos.length < limit * 2) {
+        loadMoreVideos();
+      }
+    } else {
+      toast.error("Error moving some items", {
+        description: result.message
+      });
+    }
+  };
+
   // Function to load more videos
   const loadMoreVideos = () => {
     if (!hasMore || isLoadingMore) return;
@@ -248,50 +357,64 @@ export default function GalleryPage() {
   return (
     <SlideTransition>
       <div className="flex flex-col h-full">
-        <PageHeader title={folderParam ? `Videos in ${folderParam}` : "All Videos"}>
-          <div className="flex items-center">
+        <PageHeader title={folderParam ? `Videos in ${folderParam}` : "All Videos"} />
+        
+        <div className="flex items-center justify-between px-4 pb-2">
+          <div className="text-xs text-muted-foreground">
+            {lastRefreshedText}
             {folderParam && (
-              <Badge variant="outline" className="mr-2 text-xs" icon={<FolderIcon className="w-3 h-3 mr-1" />}>
-                {folderParam}
+              <Badge variant="outline" className="ml-2">
+                <FolderIcon className="h-3 w-3 mr-1" />
+                {folderParam.split('/').pop() || folderParam}
               </Badge>
             )}
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Button
+              variant={selectionMode ? "default" : "outline"}
+              size="sm"
+              onClick={toggleSelectionMode}
+              className="mr-2 font-medium"
+              style={{ minWidth: "120px" }}
+            >
+              <CheckSquare className="h-4 w-4 mr-2" />
+              {selectionMode ? 'Cancel Selection' : 'Select Items'}
+            </Button>
 
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="outline"
                     size="icon"
-                    onClick={() => loadVideos(true)}
-                    disabled={isRefreshing || loading}
-                    className="mr-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Refresh videos</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={autoRefresh ? "default" : "outline"}
-                    size="icon"
+                    variant={autoRefresh ? "outline" : "ghost"}
+                    className={`relative h-8 w-8 ${autoRefresh ? 'border-primary text-primary' : 'text-muted-foreground'}`}
                     onClick={toggleAutoRefresh}
-                    className="mr-2"
                   >
                     <Clock className="h-4 w-4" />
+                    {autoRefresh && (
+                      <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                    )}
+                    <span className="sr-only">
+                      {autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+                    </span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>{autoRefresh ? "Auto-refresh ON" : "Auto-refresh OFF"}</p>
+                <TooltipContent side="left">
+                  {autoRefresh ? 'Auto-refresh every 30s (on)' : 'Auto-refresh every 30s (off)'}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={() => loadVideos(true)}
+              disabled={loading || isRefreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="sr-only">Refresh gallery</span>
+            </Button>
 
             <TooltipProvider>
               <Tooltip>
@@ -302,18 +425,15 @@ export default function GalleryPage() {
                     onClick={toggleAutoPlay}
                   >
                     {autoPlay ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                    <span className="sr-only">{autoPlay ? 'Disable auto-play' : 'Enable auto-play'}</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>{autoPlay ? "Auto-play ON" : "Auto-play OFF"}</p>
+                <TooltipContent side="left">
+                  {autoPlay ? 'Auto-play videos (on)' : 'Auto-play videos (off)'}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
-        </PageHeader>
-
-        <div className="text-xs text-muted-foreground px-4 pb-2">
-          {lastRefreshedText}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -323,6 +443,17 @@ export default function GalleryPage() {
                 <Suspense fallback={null}>
                   <SearchParamsWrapper onFolderChange={setFolderParam} />
                 </Suspense>
+                
+                {/* Show MultiSelectActionBar when items are selected */}
+                {selectionMode && selectedItems.length > 0 && (
+                  <MultiSelectActionBar 
+                    selectedItems={selectedItems}
+                    mediaType={MediaType.VIDEO}
+                    onClearSelection={clearSelection}
+                    onDeleteSelected={deleteSelectedItems}
+                    onMoveSelected={moveSelectedItems}
+                  />
+                )}
 
                 {loading ? (
                   renderSkeletons(12)
@@ -330,10 +461,16 @@ export default function GalleryPage() {
                   videos.map((video, index) => (
                     <VideoCard
                       key={video.id}
-                      video={video}
-                      onDelete={handleVideoDeleted}
-                      autoPlay={autoPlay}
+                      src={video.src}
+                      description={video.description}
+                      blobName={video.name}
+                      id={video.id}
                       tags={generateTagsForVideo(video, index)}
+                      autoPlay={autoPlay}
+                      selectionMode={selectionMode}
+                      selected={selectedItems.includes(video.id)}
+                      onSelect={handleItemSelect}
+                      onDelete={() => handleVideoDeleted(video.id)}
                     />
                   ))
                 ) : (
