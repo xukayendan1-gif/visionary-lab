@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { PageHeader } from "@/components/page-header";
 import { fetchVideos, VideoMetadata } from "@/utils/gallery-utils";
@@ -51,7 +51,7 @@ export default function GalleryPage() {
   
   const limit = 50;
 
-  const loadVideos = async (resetVideos = true, isAutoRefresh = false) => {
+  const loadVideos = useCallback(async (resetVideos = true, isAutoRefresh = false) => {
     if (resetVideos) {
       if (!isAutoRefresh) {
         setLoading(true);
@@ -94,7 +94,7 @@ export default function GalleryPage() {
       setIsLoadingMore(false);
       setIsRefreshing(false);
     }
-  };
+  }, [folderParam, limit, offset]);
 
   // Toggle auto-refresh
   const toggleAutoRefresh = () => {
@@ -125,7 +125,7 @@ export default function GalleryPage() {
       clearInterval(refreshInterval);
       setRefreshInterval(null);
     }
-  }, [autoRefresh]);
+  }, [autoRefresh, refreshInterval, loadVideos]);
 
   // Update the "time ago" text every minute
   useEffect(() => {
@@ -149,17 +149,17 @@ export default function GalleryPage() {
   // When folder parameter changes, reload videos
   useEffect(() => {
     loadVideos(true, false);
-  }, [folderParam]);
+  }, [folderParam, loadVideos]);
 
   // Initial load
   useEffect(() => {
     loadVideos();
-  }, []);
+  }, [loadVideos]);
 
   // Function to handle video deletion
-  const handleVideoDeleted = (deletedVideoId: string) => {
-    // Remove the deleted video from the state
-    setVideos(prevVideos => prevVideos.filter(video => video.id !== deletedVideoId));
+  const handleVideoDeleted = (deletedVideoName: string) => {
+    // Remove the deleted video from the state using the unique video name (blob name)
+    setVideos(prevVideos => prevVideos.filter(video => video.name !== deletedVideoName));
     
     // If we've deleted a video, we might want to load another one to replace it
     if (hasMore && videos.length < limit * 2) {
@@ -294,8 +294,13 @@ export default function GalleryPage() {
   };
 
   // Function to generate sample tags for videos
-  const generateTagsForVideo = (video: VideoMetadata, index: number): string[] => {
-    // If the video already has tags, use those
+  const generateTagsForVideo = (video: VideoMetadata): string[] => {
+    // First, check if we have real analysis tags
+    if (video.analysis?.tags && video.analysis.tags.length > 0) {
+      return video.analysis.tags;
+    }
+    
+    // If the video already has tags from other sources, use those
     if (video.tags && video.tags.length > 0) {
       return video.tags;
     }
@@ -312,44 +317,8 @@ export default function GalleryPage() {
       }
     }
     
-    // A pool of potential tags
-    const tagPool = [
-      "AI Generated", "Landscape", "Portrait", "Nature", "Urban", 
-      "Abstract", "People", "Architecture", "Animals", "Technology",
-      "Cinematic", "Outdoors", "Indoor", "Animation", "Experimental"
-    ];
-    
-    // Deterministic selection based on the video properties
-    const selectedTags: string[] = [];
-    
-    // Add "AI Generated" tag to all videos
-    selectedTags.push("AI Generated");
-    
-    // Add orientation tags based on title or description
-    if (video.title.toLowerCase().includes("landscape") || 
-        (video.description && video.description.toLowerCase().includes("landscape"))) {
-      selectedTags.push("Landscape");
-    } else if (video.title.toLowerCase().includes("portrait") || 
-              (video.description && video.description.toLowerCase().includes("portrait"))) {
-      selectedTags.push("Portrait");
-    } else {
-      // Use the index to select a tag if none found in title/description
-      selectedTags.push(index % 2 === 0 ? "Landscape" : "Portrait");
-    }
-    
-    // Add a content tag based on index
-    const contentIndex = (index * 3) % (tagPool.length - 2) + 2; // Skip the first two tags (AI Generated & Landscape/Portrait)
-    selectedTags.push(tagPool[contentIndex]);
-    
-    // Randomly add an extra tag for some videos
-    if (index % 3 === 0) {
-      const extraIndex = (index * 7) % (tagPool.length - 2) + 2;
-      if (tagPool[extraIndex] && !selectedTags.includes(tagPool[extraIndex])) {
-        selectedTags.push(tagPool[extraIndex]);
-      }
-    }
-    
-    return selectedTags;
+    // If no real tags are available, return empty array instead of dummy tags
+    return [];
   };
 
 
@@ -458,7 +427,7 @@ export default function GalleryPage() {
                 {loading ? (
                   renderSkeletons(12)
                 ) : videos.length > 0 ? (
-                  videos.map((video, index) => (
+                  videos.map((video) => (
                     <VideoCard
                       key={video.id}
                       src={video.src}

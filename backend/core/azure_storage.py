@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from typing import Dict, BinaryIO, Optional, Union, List, Tuple
 from fastapi import UploadFile
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -7,6 +8,8 @@ from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from datetime import datetime
 
 from backend.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AzureBlobStorageService:
@@ -37,6 +40,68 @@ class AzureBlobStorageService:
         # Ensure containers exist
         self._ensure_container_exists(self.image_container)
         self._ensure_container_exists(self.video_container)
+
+        # Configure CORS for direct access from frontend
+        self._configure_cors()
+
+    def _configure_cors(self) -> None:
+        """
+        Configure CORS settings on the Azure Storage account to allow direct access
+        from frontend domains
+        """
+        try:
+            from azure.storage.blob import CorsRule
+
+            # First, clear any existing CORS rules to avoid conflicts
+            try:
+                print("Clearing existing CORS rules...")
+                self.blob_service_client.set_service_properties(cors=[])
+                print("Existing CORS rules cleared successfully")
+            except Exception as clear_error:
+                print(
+                    f"Warning: Could not clear existing CORS rules: {clear_error}")
+
+            # Define CORS rules with individual origins (not comma-separated)
+            cors_rules = [
+                CorsRule(
+                    allowed_origins=[
+                        "http://localhost:3000",  # Local development
+                        "https://localhost:3000",  # Local development with HTTPS
+                        "http://127.0.0.1:3000",  # Alternative local development
+                        "https://127.0.0.1:3000",  # Alternative local development with HTTPS
+                        "*"  # Allow all origins for now - should be restricted in production
+                    ],
+                    allowed_methods=[
+                        "GET",
+                        "HEAD",
+                        "OPTIONS"
+                    ],
+                    allowed_headers=[
+                        "*"
+                    ],
+                    exposed_headers=[
+                        "*"
+                    ],
+                    max_age_in_seconds=3600
+                )
+            ]
+
+            print(
+                f"Setting CORS rules with {len(cors_rules[0].allowed_origins)} origins...")
+            print(f"Origins: {cors_rules[0].allowed_origins}")
+
+            # Set CORS rules
+            self.blob_service_client.set_service_properties(cors=cors_rules)
+
+            print("Successfully configured CORS for Azure Blob Storage")
+
+        except Exception as e:
+            print(
+                f"Warning: Could not configure CORS for Azure Blob Storage: {e}")
+            # Print more details for debugging
+            import traceback
+            print(f"Full error traceback: {traceback.format_exc()}")
+            # Don't fail if CORS configuration fails, as it might be due to permissions
 
     def list_blobs(self, container_name: str, prefix: Optional[str] = None,
                    limit: int = 100, marker: Optional[str] = None,
@@ -259,9 +324,6 @@ class AzureBlobStorageService:
             # Determine container based on asset type
             container_name = self.image_container if asset_type == "image" else self.video_container
 
-            # Generate a unique ID for the file
-            file_id = str(uuid.uuid4())
-
             # Get file extension and determine content type
             _, ext = os.path.splitext(file.filename)
             content_type = self._get_content_type(ext, asset_type)
@@ -269,14 +331,33 @@ class AzureBlobStorageService:
             # Normalize folder path
             normalized_folder_path = self.normalize_folder_path(folder_path)
 
-            # Create blob name with optional folder path and UUID
-            blob_name = f"{normalized_folder_path}{file_id}{ext}"
+            # Use the provided filename if available, otherwise generate UUID
+            if file.filename and file.filename.strip():
+                # Remove the extension from the filename to avoid double extensions
+                filename_without_ext = os.path.splitext(file.filename)[0]
+                # Create blob name with the provided filename
+                blob_name = f"{normalized_folder_path}{filename_without_ext}{ext}"
+                file_id = filename_without_ext  # For backward compatibility in response
+                # Check if blob already exists and handle conflicts
+                container_client = self.blob_service_client.get_container_client(
+                    container_name)
+                blob_client = container_client.get_blob_client(blob_name)
 
-            # Get container client
-            container_client = self.blob_service_client.get_container_client(
-                container_name)
+                # If blob exists, append a UUID suffix to make it unique
+                if blob_client.exists():
+                    # Use first 8 chars of UUID
+                    unique_suffix = str(uuid.uuid4())[:8]
+                    blob_name = f"{normalized_folder_path}{filename_without_ext}_{unique_suffix}{ext}"
+                    file_id = f"{filename_without_ext}_{unique_suffix}"
+            else:
+                # Fallback to UUID if no filename provided
+                file_id = str(uuid.uuid4())
+                blob_name = f"{normalized_folder_path}{file_id}{ext}"
 
-            # Create blob client
+            # Create blob client (container_client already created above for conflict checking)
+            if 'container_client' not in locals():
+                container_client = self.blob_service_client.get_container_client(
+                    container_name)
             blob_client = container_client.get_blob_client(blob_name)
 
             # Set content settings
@@ -301,6 +382,21 @@ class AzureBlobStorageService:
 
             # Upload the file
             file_content = await file.read()
+
+            # For images, add width and height to metadata if not already present
+            if asset_type == "image" and "width" not in upload_metadata:
+                try:
+                    from PIL import Image
+                    import io
+
+                    # Get image dimensions using PIL
+                    with Image.open(io.BytesIO(file_content)) as img:
+                        upload_metadata["width"] = str(img.width)
+                        upload_metadata["height"] = str(img.height)
+                except Exception as e:
+                    # If we can't get dimensions, log but continue
+                    logger.warning(f"Could not get image dimensions: {str(e)}")
+
             blob_client.upload_blob(
                 data=file_content,
                 content_settings=content_settings,
@@ -323,9 +419,6 @@ class AzureBlobStorageService:
                 "folder_path": normalized_folder_path
             }
         except Exception as e:
-            import traceback
-            print(f"Azure upload error: {str(e)}")
-            print(f"Error trace: {traceback.format_exc()}")
             raise
 
     def get_asset_metadata(self, blob_name: str, container_name: str) -> Optional[Dict[str, str]]:
@@ -385,9 +478,6 @@ class AzureBlobStorageService:
         except ResourceNotFoundError:
             return False
         except Exception as e:
-            import traceback
-            print(f"Metadata update error: {str(e)}")
-            print(f"Error trace: {traceback.format_exc()}")
             return False
 
     def _get_content_type(self, extension: str, asset_type: str) -> str:
@@ -532,5 +622,4 @@ class AzureBlobStorageService:
             # Convert to sorted list
             return sorted(list(folders))
         except Exception as e:
-            print(f"Error listing folders: {str(e)}")
             return []

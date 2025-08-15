@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { VideoGenerationJob, createVideoGenerationJob, getVideoGenerationJob, mapSettingsToApiRequest, downloadThenUploadToGallery, generateVideoFilename } from "@/services/api";
+import { VideoGenerationJob, createVideoGenerationJob, getVideoGenerationJob, mapSettingsToApiRequest, downloadThenUploadToGallery, generateVideoFilename, analyzeAndUpdateVideoMetadata, createVideoGenerationWithAnalysis, VideoGenerationWithAnalysisRequest } from "@/services/api";
 import { toast } from "sonner";
 
 // Global set to track which generation IDs have already been uploaded
@@ -34,7 +34,6 @@ export function unregisterGalleryRefreshCallback(callback: RefreshCallback) {
 
 // Trigger all registered callbacks
 function notifyGalleryRefreshNeeded() {
-  console.log(`Notifying ${refreshCallbacks.length} gallery components to refresh`);
   refreshCallbacks.forEach(callback => {
     try {
       callback();
@@ -53,6 +52,10 @@ export interface VideoQueueItem {
   job?: VideoGenerationJob; // Add the actual job data
   uploadComplete?: boolean; // Flag to track when uploads are complete
   uploadStarted?: boolean; // Flag to track when uploads are starting
+  analysisSettings?: {
+    analyzeVideo: boolean;
+  };
+  folder?: string; // Store folder information directly in queue item
 }
 
 export interface VideoSettings {
@@ -64,6 +67,7 @@ export interface VideoSettings {
   brandsProtection?: string; // Add brand protection mode
   brandsList?: string[]; // Add list of brands to protect
   folder?: string; // Add folder information
+  analyzeVideo?: boolean; // Add video analysis setting
 }
 
 interface VideoQueueContextType {
@@ -129,8 +133,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
 
             // Handle uploading multiple generations if they exist
             if (updatedJob.generations && updatedJob.generations.length > 0) {
-              console.log(`Job ${updatedJob.id} completed with ${updatedJob.generations.length} generations`);
-              
               // Handle each generation
               const uploadPromises = updatedJob.generations
                 .filter(generation => !uploadedGenerations.has(generation.id)) // Only process generations not already uploaded
@@ -138,7 +140,6 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   // Mark this generation as being processed to prevent duplicate uploads
                   uploadedGenerations.add(generation.id);
                   
-                  console.log(`Uploading generation ${generation.id} (not previously uploaded)`);
                   const fileName = generateVideoFilename(generation.prompt || item.prompt, generation.id);
                   
                   // Define metadata for the uploaded asset
@@ -154,11 +155,30 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   };
 
                   // Pass folder information to the download/upload function if available
-                  const folder = item.job?.metadata?.folder || undefined;
+                  // Use folder from queue item first, then fall back to job metadata
+                  const folder = item.folder || item.job?.metadata?.folder || undefined;
                   
                   try {
                     await downloadThenUploadToGallery(generation.id, fileName, metadata, folder);
-                    console.log(`Successfully uploaded generation ${generation.id}`);
+                    
+                    // Analyze the video if analysis is enabled for this queue item
+                    const queueItem = queueItems.find(item => item.job?.id === updatedJob.id);
+                    const analysisSettings = queueItem?.analysisSettings;
+                    
+                    if (analysisSettings?.analyzeVideo) {
+                      try {
+                        // Wait 10 seconds for Azure Blob Storage to propagate the uploaded video
+                        await new Promise(resolve => setTimeout(resolve, 10000));
+                        
+                        await analyzeAndUpdateVideoMetadata(fileName);
+                        
+                        // Don't show individual analysis toasts - we'll show a consolidated one later
+                                              } catch (analysisError) {
+                          console.error(`Video analysis failed for ${generation.id}:`, analysisError);
+                          // Don't show individual analysis error toasts - log the error for debugging
+                        }
+                    }
+                    
                     return true;
                   } catch (error) {
                     console.error(`Error uploading generation ${generation.id}:`, error);
@@ -167,7 +187,8 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                 });
               
               if (uploadPromises.length > 0) {
-                toast.info(`Uploading ${uploadPromises.length} video${uploadPromises.length > 1 ? 's' : ''} to gallery...`);
+                // Use a loading toast that transforms into success/error
+                const uploadToastId = toast.loading(`Uploading ${uploadPromises.length} video${uploadPromises.length > 1 ? 's' : ''} to gallery...`);
                 
                 try {
                   // Wait for all uploads to complete
@@ -175,7 +196,17 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   const successCount = results.filter(Boolean).length;
                   
                   if (successCount > 0) {
-                    toast.success(`${successCount} video${successCount > 1 ? 's' : ''} uploaded to gallery`, {
+                    // Check if analysis was enabled for this job
+                    const queueItem = queueItems.find(item => item.job?.id === updatedJob.id);
+                    const analysisEnabled = queueItem?.analysisSettings?.analyzeVideo;
+                    
+                    const description = analysisEnabled 
+                      ? `${successCount} video${successCount > 1 ? 's' : ''} uploaded with AI analysis`
+                      : `${successCount} video${successCount > 1 ? 's' : ''} ready in your gallery`;
+                    
+                    toast.success(`Videos uploaded successfully`, {
+                      id: uploadToastId,
+                      description,
                       duration: 5000
                     });
                     
@@ -184,11 +215,15 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
                   }
                   
                   if (successCount < uploadPromises.length) {
-                    toast.error(`${uploadPromises.length - successCount} video${uploadPromises.length - successCount > 1 ? 's' : ''} failed to upload`);
+                    toast.error(`${uploadPromises.length - successCount} video${uploadPromises.length - successCount > 1 ? 's' : ''} failed to upload`, {
+                      id: uploadToastId
+                    });
                   }
                 } catch (uploadError) {
                   console.error(`Error handling uploads:`, uploadError);
-                  toast.error(`Some videos failed to upload`);
+                  toast.error(`Some videos failed to upload`, {
+                    id: uploadToastId
+                  });
                 }
               } else {
                 console.log(`All generations for job ${updatedJob.id} were already uploaded`);
@@ -277,6 +312,10 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
         prompt,
         status: "pending",
         createdAt: new Date(),
+        analysisSettings: settings ? {
+          analyzeVideo: settings.analyzeVideo || false
+        } : undefined,
+        folder: settings?.folder, // Store folder directly in queue item
       };
       
       // Update queue with pending item
@@ -304,23 +343,83 @@ export function VideoQueueProvider({ children }: { children: React.ReactNode }) 
         if (settings.brandsList && settings.brandsList.length > 0) {
           jobMetadata.brandsList = JSON.stringify(settings.brandsList);
         }
+        if (settings.analyzeVideo !== undefined) {
+          jobMetadata.analyzeVideo = settings.analyzeVideo.toString();
+        }
         
-        // Create the job in the backend with metadata
-        const job = await createVideoGenerationJob({
-          ...apiRequest,
-          metadata: jobMetadata
-        });
-        
-        // Update the queue item with the real job ID and data
-        setQueueItems(prev => 
-          prev.map(item => 
-            item.id === tempId
-              ? { ...item, id: job.id, job }
-              : item
-          )
-        );
-        
-        return job.id;
+        // Check if we should use the unified endpoint with analysis
+        if (settings.analyzeVideo) {
+          // Use the unified endpoint that handles generation + analysis atomically
+          const unifiedRequest: VideoGenerationWithAnalysisRequest = {
+            ...apiRequest,
+            analyze_video: true,
+            metadata: jobMetadata
+          };
+          
+          try {
+            const unifiedResponse = await createVideoGenerationWithAnalysis(unifiedRequest);
+            const job = unifiedResponse.job;
+            
+            // Don't show immediate success toast for unified endpoint
+            // The regular polling mechanism will handle the final success notification
+            
+            // Update the queue item with the completed job
+            setQueueItems(prev => 
+              prev.map(item => 
+                item.id === tempId
+                  ? { 
+                      ...item, 
+                      id: job.id, 
+                      job,
+                      status: "completed",
+                      progress: 100,
+                      uploadComplete: true, // Mark as complete since unified endpoint handles everything
+                      folder: item.folder // Preserve folder information
+                    }
+                  : item
+              )
+            );
+            
+            return job.id;
+          } catch (error) {
+            console.error("Unified endpoint failed, falling back to traditional approach:", error);
+            toast.error("Unified generation failed, trying traditional approach...");
+            
+            // Fall back to the traditional approach
+            const job = await createVideoGenerationJob({
+              ...apiRequest,
+              metadata: jobMetadata
+            });
+            
+            // Update the queue item with the real job ID and data
+            setQueueItems(prev => 
+              prev.map(item => 
+                item.id === tempId
+                  ? { ...item, id: job.id, job, folder: item.folder } // Preserve folder information
+                  : item
+              )
+            );
+            
+            return job.id;
+          }
+        } else {
+          // Use traditional endpoint for non-analysis jobs
+          const job = await createVideoGenerationJob({
+            ...apiRequest,
+            metadata: jobMetadata
+          });
+          
+          // Update the queue item with the real job ID and data
+          setQueueItems(prev => 
+            prev.map(item => 
+              item.id === tempId
+                ? { ...item, id: job.id, job, folder: item.folder } // Preserve folder information
+                : item
+            )
+          );
+          
+                     return job.id;
+         }
       }
       
       return tempId;

@@ -3,16 +3,19 @@ from typing import List, Optional, Dict
 
 # Models used by video API endpoints
 
+
 class VideoPromptEnhancementRequest(BaseModel):
     """Request model for enhancing video generation prompts"""
-    original_prompt : str = Field(...,
-                        description="Prompt to enhance for video generation")
+    original_prompt: str = Field(...,
+                                 description="Prompt to enhance for video generation")
+
 
 class VideoPromptEnhancementResponse(BaseModel):
     """Response model for enhanced video generation prompts"""
     enhanced_prompt: str = Field(...,
-                        description="Enhanced prompt for video generation")
-    
+                                 description="Enhanced prompt for video generation")
+
+
 class VideoGenerationRequest(BaseModel):
     """Request model for generating videos using Sora"""
     prompt: str = Field(...,
@@ -49,6 +52,7 @@ class VideoAnalyzeRequest(BaseModel):
     video_path: str = Field(...,
                             description="Path to the video file on Azure Blob Storage. Supports a full URL with or without a SAS token.")
 
+
 class VideoAnalyzeResponse(BaseModel):
     """Response model for video analysis results"""
     summary: str = Field(..., description="Summary of the video content")
@@ -74,3 +78,28 @@ class VideoFilenameGenerateRequest(BaseModel):
 class VideoFilenameGenerateResponse(BaseModel):
     """Response model for filename generation"""
     filename: str = Field(..., description="Generated filename")
+
+
+class VideoGenerationWithAnalysisRequest(BaseModel):
+    """Request model for generating videos with optional analysis"""
+    prompt: str = Field(...,
+                        description="Prompt describing the video to generate")
+    n_variants: int = Field(
+        1, description="Number of video variants to generate")
+    n_seconds: int = Field(10, description="Length of the video in seconds")
+    height: int = Field(720, description="Height of the video in pixels")
+    width: int = Field(1280, description="Width of the video in pixels")
+    analyze_video: bool = Field(
+        False, description="Whether to analyze the generated videos")
+    metadata: Optional[Dict[str, str]] = Field(
+        None, description="Additional metadata for the job")
+
+
+class VideoGenerationWithAnalysisResponse(BaseModel):
+    """Response model for video generation with analysis"""
+    job: VideoGenerationJobResponse = Field(...,
+                                            description="Video generation job details")
+    analysis_results: Optional[List[VideoAnalyzeResponse]] = Field(
+        None, description="Analysis results for each generated video (if analysis was requested)")
+    upload_results: Optional[List[Dict[str, str]]] = Field(
+        None, description="Upload results for each video to gallery")

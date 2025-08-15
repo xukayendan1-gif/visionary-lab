@@ -43,7 +43,7 @@ export function VideoCard({
   description,
   aspectRatio = "16:9",
   className,
-  tags = ["AI Generated", "Landscape"],
+  tags,
   blobName,
   onDelete,
   onClick,
@@ -112,7 +112,6 @@ export function VideoCard({
     
     // Don't try to load folder markers as videos
     if (src.includes('.folder')) {
-      console.log("Skipping folder marker:", src);
       setIsLoading(false);
       return;
     }
@@ -155,7 +154,6 @@ export function VideoCard({
 
     const handleError = () => {
       setIsLoading(false);
-      console.error("Error loading video:", src);
     };
 
     video.addEventListener('loadedmetadata', handleMetadata);

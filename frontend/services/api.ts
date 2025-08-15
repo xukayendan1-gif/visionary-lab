@@ -465,10 +465,14 @@ export async function downloadThenUploadToGallery(
 export function generateVideoFilename(prompt: string, generationId: string, extension: string = ".mp4"): string {
   // Take first 50 chars of prompt, or full prompt if shorter
   const promptPart = prompt.substring(0, 50).trim();
+  // Replace newlines and multiple whitespace with single space first
+  const normalizedPrompt = promptPart.replace(/\s+/g, ' ');
   // Replace non-alphanumeric characters (except spaces, underscores, hyphens) with underscore
-  const sanitizedPrompt = promptPart.replace(/[^a-zA-Z0-9 _-]/g, '_').replace(/\s+/g, '_');
+  const sanitizedPrompt = normalizedPrompt.replace(/[^a-zA-Z0-9 _-]/g, '_').replace(/\s+/g, '_');
+  // Remove multiple consecutive underscores and trim underscores from ends
+  const cleanedPrompt = sanitizedPrompt.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
   // Ensure it's not empty after sanitization
-  const finalPromptPart = sanitizedPrompt || "video";
+  const finalPromptPart = cleanedPrompt || "video";
   return `${finalPromptPart}_${generationId}${extension}`;
 }
 
@@ -736,6 +740,22 @@ export interface VideoAnalysisResponse {
   products: string;
   tags: string[];
   feedback: string;
+}
+
+export interface VideoGenerationWithAnalysisRequest {
+  prompt: string;
+  n_variants: number;
+  n_seconds: number;
+  height: number;
+  width: number;
+  analyze_video: boolean;
+  metadata?: Record<string, string>;
+}
+
+export interface VideoGenerationWithAnalysisResponse {
+  job: VideoGenerationJob;
+  analysis_results?: VideoAnalysisResponse[];
+  upload_results?: Array<{[key: string]: string}>;
 }
 
 /**
@@ -1359,19 +1379,34 @@ export async function moveAsset(
 
 /**
  * Edit an image using the OpenAI API
+ * 
+ * @param sourceImages - File or array of files to edit
+ * @param prompt - Text prompt describing the desired edits
+ * @param n - Number of variations to generate (default: 1)
+ * @param size - Output image size (default: "auto")
+ * @param quality - Image quality setting (default: "auto")
+ * @param inputFidelity - Input fidelity for better reproduction of input features:
+ *   - 'low' (default): Standard fidelity, faster processing
+ *   - 'high': Better reproduction of input image features, additional cost (~$0.04-$0.06 per image)
  */
 export async function editImage(
   sourceImages: File | File[],
   prompt: string, 
   n: number = 1,
   size: string = "auto",
-  quality: string = "auto"
+  quality: string = "auto",
+  inputFidelity: string = "low"
 ): Promise<ImageEditResponse> {
+  // Validate input_fidelity parameter
+  if (inputFidelity && !["low", "high"].includes(inputFidelity)) {
+    throw new Error("input_fidelity must be either 'low' or 'high'");
+  }
+
   const url = `${API_BASE_URL}/images/edit/upload`;
   
   if (DEBUG) {
     const imageCount = Array.isArray(sourceImages) ? sourceImages.length : 1;
-    console.log(`Editing ${imageCount} image(s) with prompt: ${prompt}`);
+    console.log(`Editing ${imageCount} image(s) with prompt: ${prompt}, input_fidelity: ${inputFidelity}`);
     console.log(`POST ${url}`);
   }
   
@@ -1392,6 +1427,7 @@ export async function editImage(
   formData.append('size', size);
   formData.append('model', 'gpt-image-1');
   formData.append('quality', quality);
+  formData.append('input_fidelity', inputFidelity);
   
   try {
     const response = await fetch(url, {
@@ -1574,6 +1610,46 @@ export async function protectImagePrompt(
     // If there's an error, return the original prompt
     return prompt;
   }
+}
+
+/**
+ * Create a video generation job with optional analysis in one atomic operation
+ */
+export async function createVideoGenerationWithAnalysis(request: VideoGenerationWithAnalysisRequest): Promise<VideoGenerationWithAnalysisResponse> {
+  const url = `${API_BASE_URL}/videos/generate-with-analysis`;
+  
+  if (DEBUG) {
+    console.log(`Creating video generation with analysis: ${request.prompt}`);
+    console.log(`POST ${url}`);
+    console.log('Request:', request);
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (DEBUG) {
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      console.error('Error response:', await response.text().catch(() => 'Could not read response text'));
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to create video generation with analysis: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  
+  if (DEBUG) {
+    console.log('Response data:', data);
+  }
+  
+  return data;
 }
 
 /**

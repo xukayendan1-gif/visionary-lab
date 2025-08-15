@@ -475,45 +475,46 @@ async def update_asset_metadata(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/asset/{media_type}/{blob_name:path}")
-async def get_asset_content(
-    media_type: MediaType,
-    blob_name: str,
-    azure_storage_service: AzureBlobStorageService = Depends(
-        lambda: AzureBlobStorageService())
-):
-    """
-    Stream asset content (image or video) directly from Azure Blob Storage
-
-    This endpoint acts as a proxy to bypass CORS restrictions and authentication requirements
-    for Azure Blob Storage assets.
-
-    The blob_name parameter can include folder paths. 
-    For example: folder/subfolder/image.jpg
-    """
-    try:
-        # Determine container name based on media type
-        container_name = settings.AZURE_BLOB_IMAGE_CONTAINER if media_type == MediaType.IMAGE else settings.AZURE_BLOB_VIDEO_CONTAINER
-
-        # Get the asset content
-        content, content_type = azure_storage_service.get_asset_content(
-            blob_name, container_name)
-
-        if not content:
-            raise HTTPException(
-                status_code=404, detail=f"Asset not found: {blob_name}")
-
-        # Get just the filename without the folder path for the Content-Disposition header
-        filename = blob_name.split('/')[-1] if '/' in blob_name else blob_name
-
-        # Return the content as a streaming response
-        return StreamingResponse(
-            content=io.BytesIO(content),
-            media_type=content_type,
-            headers={"Content-Disposition": f"inline; filename={filename}"}
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.get("/asset/{media_type}/{blob_name:path}")
+# async def get_asset_content(
+#     media_type: MediaType,
+#     blob_name: str,
+#     azure_storage_service: AzureBlobStorageService = Depends(
+#         lambda: AzureBlobStorageService())
+# ):
+#     """
+#     Stream asset content (image or video) directly from Azure Blob Storage
+#
+#     DEPRECATED: This endpoint is disabled. Use direct SAS token access instead.
+#     This endpoint previously acted as a proxy to bypass CORS restrictions and authentication requirements
+#     for Azure Blob Storage assets.
+#
+#     The blob_name parameter can include folder paths.
+#     For example: folder/subfolder/image.jpg
+#     """
+#     try:
+#         # Determine container name based on media type
+#         container_name = settings.AZURE_BLOB_IMAGE_CONTAINER if media_type == MediaType.IMAGE else settings.AZURE_BLOB_VIDEO_CONTAINER
+#
+#         # Get the asset content
+#         content, content_type = azure_storage_service.get_asset_content(
+#             blob_name, container_name)
+#
+#         if not content:
+#             raise HTTPException(
+#                 status_code=404, detail=f"Asset not found: {blob_name}")
+#
+#         # Get just the filename without the folder path for the Content-Disposition header
+#         filename = blob_name.split('/')[-1] if '/' in blob_name else blob_name
+#
+#         # Return the content as a streaming response
+#         return StreamingResponse(
+#             content=io.BytesIO(content),
+#             media_type=content_type,
+#             headers={"Content-Disposition": f"inline; filename={filename}"}
+#         )
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/folders", response_model=Dict[str, Any])
@@ -638,7 +639,16 @@ async def create_folder(
             "is_folder_marker": "true",
             "folder_path": normalized_path
         }
-        blob_client.upload_blob(data=b"", overwrite=True, metadata=metadata)
+
+        # Preprocess metadata values to ensure Azure compatibility
+        processed_metadata = {}
+        for k, v in metadata.items():
+            if v is not None:
+                processed_metadata[k] = azure_storage_service._preprocess_metadata_value(
+                    str(v))
+
+        blob_client.upload_blob(data=b"", overwrite=True,
+                                metadata=processed_metadata)
 
         return {
             "success": True,
@@ -684,13 +694,20 @@ async def _move_asset_background(
         # Update metadata with new folder path
         metadata['folder_path'] = normalized_folder
 
+        # Preprocess metadata values to ensure Azure compatibility
+        processed_metadata = {}
+        for k, v in metadata.items():
+            if v is not None:
+                processed_metadata[k] = azure_storage_service._preprocess_metadata_value(
+                    str(v))
+
         # Set content type
         from azure.storage.blob import ContentSettings
         content_settings = ContentSettings(content_type=content_type)
 
         # Upload to new location
         blob_client.upload_blob(data=content, overwrite=True,
-                                metadata=metadata, content_settings=content_settings)
+                                metadata=processed_metadata, content_settings=content_settings)
 
         # Delete original blob after successful copy
         azure_storage_service.delete_asset(blob_name, container_name)
@@ -762,10 +779,18 @@ async def move_asset(
                 "is_folder_marker": "true",
                 "folder_path": normalized_folder
             }
+
+            # Preprocess metadata values to ensure Azure compatibility
+            processed_marker_metadata = {}
+            for k, v in marker_metadata.items():
+                if v is not None:
+                    processed_marker_metadata[k] = azure_storage_service._preprocess_metadata_value(
+                        str(v))
+
             folder_blob_client = container_client.get_blob_client(
                 folder_marker)
             folder_blob_client.upload_blob(
-                data=b"", overwrite=True, metadata=marker_metadata)
+                data=b"", overwrite=True, metadata=processed_marker_metadata)
 
         # Check if target already exists (to avoid overwrite if interrupted)
         try:

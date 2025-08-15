@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import re
+import time
+from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlparse
 
@@ -23,6 +25,8 @@ from backend.models.videos import (
     VideoAnalyzeResponse,
     VideoGenerationJobResponse,
     VideoGenerationRequest,
+    VideoGenerationWithAnalysisRequest,
+    VideoGenerationWithAnalysisResponse,
     VideoPromptEnhancementRequest,
     VideoPromptEnhancementResponse,
 )
@@ -142,6 +146,258 @@ def delete_failed_video_generation_jobs():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/generate-with-analysis", response_model=VideoGenerationWithAnalysisResponse)
+def create_video_generation_with_analysis(req: VideoGenerationWithAnalysisRequest):
+    """
+    Create a video generation job and optionally analyze the results in one atomic operation.
+    This endpoint handles the entire workflow: generation -> wait for completion -> analysis.
+
+    Args:
+        req: Request containing video generation parameters and analysis options
+
+    Returns:
+        Response containing job details, analysis results (if requested), and upload status
+    """
+    import tempfile
+    import requests
+
+    try:
+        # Ensure required clients are available
+        if sora_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Video generation service is currently unavailable. Please check your environment configuration."
+            )
+
+        if req.analyze_video and llm_client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM service is currently unavailable for video analysis. Please check your environment configuration."
+            )
+
+        # Step 1: Create the video generation job
+        logger.info(f"Creating video generation job with prompt: {req.prompt}")
+        job = sora_client.create_video_generation_job(
+            prompt=req.prompt,
+            n_seconds=req.n_seconds,
+            height=req.height,
+            width=req.width,
+            n_variants=req.n_variants
+        )
+
+        job_response = VideoGenerationJobResponse(**job)
+        logger.info(
+            f"Created job {job_response.id}, waiting for completion...")
+
+        # Step 2: Poll for job completion
+        max_wait_time = 300  # 5 minutes max wait
+        poll_interval = 5    # Check every 5 seconds
+        elapsed_time = 0
+
+        while elapsed_time < max_wait_time:
+            current_job = sora_client.get_video_generation_job(job_response.id)
+            job_response = VideoGenerationJobResponse(**current_job)
+
+            if job_response.status == "succeeded":
+                logger.info(f"Job {job_response.id} completed successfully")
+                break
+            elif job_response.status == "failed":
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Video generation failed: {job_response.failure_reason}"
+                )
+
+            time.sleep(poll_interval)
+            elapsed_time += poll_interval
+
+        if job_response.status != "succeeded":
+            raise HTTPException(
+                status_code=408,
+                detail="Video generation timed out. Please try again."
+            )
+
+        analysis_results = None
+
+        # Step 3: Analyze videos if requested
+        if req.analyze_video and job_response.generations:
+            logger.info(
+                f"Starting analysis for {len(job_response.generations)} generated videos")
+            analysis_results = []
+
+            for generation in job_response.generations:
+                try:
+                    generation_id = generation.get('id')
+                    if not generation_id:
+                        logger.warning(
+                            "Generation missing ID, skipping analysis")
+                        continue
+
+                    logger.info(
+                        f"Downloading video content for generation {generation_id}")
+
+                    # Use the Sora client to download the video content directly
+                    # This bypasses the Azure Blob Storage timing issue
+
+                    # Download video directly from Sora to a temporary file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
+                        temp_file_path = temp_file.name
+
+                    try:
+                        # Use Sora client to download video content directly
+                        downloaded_path = sora_client.get_video_generation_video_content(
+                            generation_id,
+                            os.path.basename(temp_file_path),
+                            os.path.dirname(temp_file_path)
+                        )
+
+                        logger.info(
+                            f"Video downloaded directly from Sora to: {downloaded_path}")
+
+                        # Extract frames and analyze
+                        video_extractor = VideoExtractor(downloaded_path)
+                        frames = video_extractor.extract_video_frames(
+                            interval=2)
+
+                        video_analyzer = VideoAnalyzer(
+                            llm_client, settings.LLM_DEPLOYMENT)
+                        insights = video_analyzer.video_chat(
+                            frames, system_message=analyze_video_system_message)
+
+                        analysis_result = VideoAnalyzeResponse(
+                            summary=insights.get('summary', ''),
+                            products=insights.get('products', ''),
+                            tags=insights.get('tags', []),
+                            feedback=insights.get('feedback', '')
+                        )
+
+                        analysis_results.append(analysis_result)
+                        logger.info(
+                            f"Analysis completed for generation {generation_id}")
+
+                        # Upload the video to Azure Blob Storage for gallery
+                        try:
+                            from backend.core.azure_storage import AzureBlobStorageService
+                            from azure.storage.blob import ContentSettings
+
+                            # Create Azure storage service
+                            azure_service = AzureBlobStorageService()
+
+                            # Generate proper filename using the dedicated API
+                            try:
+                                filename_req = VideoFilenameGenerateRequest(
+                                    prompt=req.prompt,
+                                    gen_id=generation_id,
+                                    extension=".mp4"
+                                )
+                                filename_response = generate_video_filename(
+                                    filename_req)
+                                base_filename = filename_response.filename
+                            except Exception as filename_error:
+                                logger.warning(
+                                    f"Failed to generate filename using API, falling back to simple sanitization: {filename_error}")
+                                # Fallback to simple sanitization
+                                sanitized_prompt = re.sub(
+                                    r'[^a-zA-Z0-9_\-]', '_', req.prompt.strip()[:50])
+                                base_filename = f"{sanitized_prompt}_{generation_id}.mp4"
+
+                            # Extract folder path from request metadata and normalize it
+                            folder_path = req.metadata.get(
+                                'folder') if req.metadata else None
+                            final_filename = base_filename
+
+                            if folder_path and folder_path != 'root':
+                                # Use Azure service's normalize_folder_path method for consistency
+                                normalized_folder = azure_service.normalize_folder_path(
+                                    folder_path)
+                                final_filename = f"{normalized_folder}{base_filename}"
+                                logger.info(
+                                    f"Uploading video to folder: {normalized_folder}")
+                            else:
+                                logger.info(
+                                    "Uploading video to root directory")
+
+                            # Upload to Azure Blob Storage
+                            container_client = azure_service.blob_service_client.get_container_client(
+                                "videos")
+                            blob_client = container_client.get_blob_client(
+                                final_filename)
+
+                            # Prepare metadata including analysis results
+                            # Using consistent field names with VideoAnalyzeResponse model
+                            upload_metadata = {
+                                "generation_id": generation_id,
+                                "prompt": req.prompt,
+                                "summary": analysis_result.summary,
+                                "products": analysis_result.products,
+                                "tags": ",".join(analysis_result.tags),
+                                "feedback": analysis_result.feedback,
+                                "analyzed": "true",
+                                "upload_date": datetime.now().isoformat()
+                            }
+
+                            # Add folder path to metadata if specified
+                            if folder_path and folder_path != 'root':
+                                upload_metadata["folder_path"] = azure_service.normalize_folder_path(
+                                    folder_path)
+
+                            # Preprocess metadata values to ensure Azure compatibility
+                            processed_metadata = {}
+                            for k, v in upload_metadata.items():
+                                if v is not None:
+                                    processed_metadata[k] = azure_service._preprocess_metadata_value(
+                                        str(v))
+
+                            # Read the file and upload with metadata
+                            with open(downloaded_path, 'rb') as video_file:
+                                blob_client.upload_blob(
+                                    data=video_file,
+                                    content_settings=ContentSettings(
+                                        content_type="video/mp4"),
+                                    metadata=processed_metadata,
+                                    overwrite=True
+                                )
+
+                            blob_url = blob_client.url
+                            logger.info(
+                                f"Uploaded video to gallery: {blob_url}")
+                            if folder_path and folder_path != 'root':
+                                logger.info(
+                                    f"Video uploaded to folder '{folder_path}' with normalized path '{azure_service.normalize_folder_path(folder_path)}'")
+
+                        except Exception as upload_error:
+                            logger.warning(
+                                f"Failed to upload video to gallery: {upload_error}")
+
+                    finally:
+                        # Clean up temporary file
+                        try:
+                            if os.path.exists(temp_file_path):
+                                os.unlink(temp_file_path)
+                            if 'downloaded_path' in locals() and os.path.exists(downloaded_path):
+                                os.unlink(downloaded_path)
+                            logger.info(f"Cleaned up temporary files")
+                        except Exception as cleanup_error:
+                            logger.warning(
+                                f"Failed to clean up temporary files: {cleanup_error}")
+
+                except Exception as analysis_error:
+                    logger.error(
+                        f"Failed to analyze generation {generation_id}: {analysis_error}")
+                    # Continue with other generations even if one fails
+                    continue
+
+        return VideoGenerationWithAnalysisResponse(
+            job=job_response,
+            analysis_results=analysis_results,
+            upload_results=None  # We're not handling uploads in this endpoint
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Error in unified video generation with analysis: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/generations/{generation_id}/content", status_code=status.HTTP_200_OK)
 def download_generation_content(generation_id: str, file_name: str, target_folder: Optional[str] = None, as_gif: bool = False):
     """
@@ -211,6 +467,9 @@ def analyze_video(req: VideoAnalyzeRequest):
     Returns:
         Response containing summary, products, tags, and feedback generated by the LLM.
     """
+    import tempfile
+    import requests
+
     try:
         file_path = req.video_path
 
@@ -225,26 +484,66 @@ def analyze_video(req: VideoAnalyzeRequest):
             if "?" not in file_path:
                 file_path += f"?{video_sas_token}"
 
-        # extract frames from the video each 2 seconds
-        video_extractor = VideoExtractor(file_path)
-        frames = video_extractor.extract_video_frames(interval=2) 
-        
-        video_analyzer = VideoAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
-        insights = video_analyzer.video_chat(frames, system_message=analyze_video_system_message)
-        summary = insights.get('summary')
-        products = insights.get('products')
-        tags = insights.get('tags')
-        feedback = insights.get('feedback')
+        # Download the video file to a temporary location with retry logic
+        logger.info(f"Downloading video from Azure Blob Storage: {file_path}")
 
-        return VideoAnalyzeResponse(summary=summary, products=products, tags=tags, feedback=feedback)
-    
+        # Retry logic for Azure Blob Storage propagation delays
+        max_retries = 3
+        retry_delay = 5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(file_path, stream=True, timeout=30)
+                response.raise_for_status()
+                break  # Success, exit retry loop
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404 and attempt < max_retries - 1:
+                    logger.warning(
+                        f"Video not found (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    raise  # Re-raise if it's not a 404 or we've exhausted retries
+
+        # Create a temporary file to store the downloaded video
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
+            for chunk in response.iter_content(chunk_size=8192):
+                temp_file.write(chunk)
+            temp_file_path = temp_file.name
+
+        logger.info(f"Video downloaded to temporary file: {temp_file_path}")
+
+        try:
+            # extract frames from the video each 2 seconds using the local file
+            video_extractor = VideoExtractor(temp_file_path)
+            frames = video_extractor.extract_video_frames(interval=2)
+
+            video_analyzer = VideoAnalyzer(llm_client, settings.LLM_DEPLOYMENT)
+            insights = video_analyzer.video_chat(
+                frames, system_message=analyze_video_system_message)
+            summary = insights.get('summary')
+            products = insights.get('products')
+            tags = insights.get('tags')
+            feedback = insights.get('feedback')
+
+            return VideoAnalyzeResponse(summary=summary, products=products, tags=tags, feedback=feedback)
+
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file_path)
+                logger.info(f"Cleaned up temporary file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(
+                    f"Failed to clean up temporary file {temp_file_path}: {cleanup_error}")
+
     except Exception as e:
         logger.error(f"Error analyzing video: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Error analyzing video. Please try again later."
         )
-    
+
 
 @router.post("/prompt/enhance", response_model=VideoPromptEnhancementResponse)
 def enhance_video_prompt(req: VideoPromptEnhancementRequest):
@@ -272,11 +571,12 @@ def enhance_video_prompt(req: VideoPromptEnhancementRequest):
             {"role": "user", "content": original_prompt},
         ]
         response = llm_client.chat.completions.create(messages=messages,
-                                                             model=settings.LLM_DEPLOYMENT,
-                                                             response_format={"type": "json_object"})
-        enhanced_prompt = json.loads(response.choices[0].message.content).get('prompt')
+                                                      model=settings.LLM_DEPLOYMENT,
+                                                      response_format={"type": "json_object"})
+        enhanced_prompt = json.loads(
+            response.choices[0].message.content).get('prompt')
         return VideoPromptEnhancementResponse(enhanced_prompt=enhanced_prompt)
-    
+
     except Exception as e:
         logger.error(f"Error enhancing video prompt: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -321,7 +621,8 @@ def generate_video_filename(req: VideoFilenameGenerateRequest):
             model=settings.LLM_DEPLOYMENT,
             response_format={"type": "json_object"}
         )
-        filename = json.loads(response.choices[0].message.content).get('filename_prefix')
+        filename = json.loads(
+            response.choices[0].message.content).get('filename_prefix')
 
         # Validate and sanitize filename
         if not filename or not filename.strip():
@@ -344,4 +645,3 @@ def generate_video_filename(req: VideoFilenameGenerateRequest):
     except Exception as e:
         logger.error(f"Error generating filename: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-

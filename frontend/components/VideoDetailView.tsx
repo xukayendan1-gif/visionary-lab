@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   X, ChevronLeft, ChevronRight, Play, Pause, 
   Download, Trash2, FolderUp, Eye, Loader2, Maximize, Minimize 
@@ -72,7 +72,7 @@ export function VideoDetailView({
   };
 
   // Video player controls
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     
     try {
@@ -108,15 +108,15 @@ export function VideoDetailView({
       console.error("Toggle play error:", error);
       toast.error("Video playback error");
     }
-  };
+  }, [isPlaying]);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!videoRef.current) return;
     
     const newMutedState = !isMuted;
     videoRef.current.muted = newMutedState;
     setIsMuted(newMutedState);
-  };
+  }, [isMuted]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -267,6 +267,28 @@ export function VideoDetailView({
   }, []);
 
   // Handle keyboard navigation
+  // Navigate to another video - moved before useEffect to avoid temporal dead zone
+  const navigateVideo = useCallback((direction: 'prev' | 'next') => {
+    if (!video || videos.length <= 1) return;
+    
+    const currentIndex = videos.findIndex(v => v.id === video.id);
+    if (currentIndex === -1) return;
+    
+    let newIndex: number;
+    if (direction === 'prev') {
+      newIndex = currentIndex === 0 ? videos.length - 1 : currentIndex - 1;
+    } else {
+      newIndex = currentIndex === videos.length - 1 ? 0 : currentIndex + 1;
+    }
+    
+    // The parent component that owns the VideoDetailView should handle the navigation
+    // by updating the fullscreenVideo state with videos[newIndex].
+    // We'll just call the onNavigate callback if available.
+    if (onNavigate) {
+      onNavigate(direction, newIndex);
+    }
+  }, [video, videos, onNavigate]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check if the event target is an input field, textarea, or element with contentEditable
@@ -320,29 +342,7 @@ export function VideoDetailView({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [video, videos]);
-
-  // Navigate to another video
-  const navigateVideo = (direction: 'prev' | 'next') => {
-    if (!video || videos.length <= 1) return;
-    
-    const currentIndex = videos.findIndex(v => v.id === video.id);
-    if (currentIndex === -1) return;
-    
-    let newIndex: number;
-    if (direction === 'prev') {
-      newIndex = currentIndex === 0 ? videos.length - 1 : currentIndex - 1;
-    } else {
-      newIndex = currentIndex === videos.length - 1 ? 0 : currentIndex + 1;
-    }
-    
-    // The parent component that owns the VideoDetailView should handle the navigation
-    // by updating the fullscreenVideo state with videos[newIndex].
-    // We'll just call the onNavigate callback if available.
-    if (onNavigate) {
-      onNavigate(direction, newIndex);
-    }
-  };
+  }, [video, videos, navigateVideo, onClose, togglePlay, toggleMute]);
 
   // Handle video deletion
   const handleDelete = async () => {
@@ -854,7 +854,7 @@ export function VideoDetailView({
                     </svg>
                     Analysis
                   </h3>
-                  {!analysisResult && (
+                  {!analysisResult && !video.analysis?.analyzed && (
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -874,37 +874,39 @@ export function VideoDetailView({
                   )}
                 </div>
                 
-                {analysisResult ? (
+                {/* Show analysis from metadata first, then from analysisResult state */}
+                {(video.analysis?.analyzed || analysisResult) ? (
                   <div className="space-y-4 text-sm">
-                    {analysisResult.summary && (
+                    {/* Use metadata analysis if available, otherwise use analysisResult */}
+                    {(video.analysis?.summary || analysisResult?.summary) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-1">Summary</h4>
-                        <p className="text-sm">{analysisResult.summary}</p>
+                        <p className="text-sm">{video.analysis?.summary || analysisResult?.summary}</p>
                       </div>
                     )}
                     
-                    {analysisResult.products && (
+                    {(video.analysis?.products || analysisResult?.products) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-1">Products/Brands</h4>
-                        <p className="text-sm">{analysisResult.products}</p>
+                        <p className="text-sm">{video.analysis?.products || analysisResult?.products}</p>
                       </div>
                     )}
                     
-                    {analysisResult.tags && analysisResult.tags.length > 0 && (
+                    {((video.analysis?.tags && video.analysis.tags.length > 0) || (analysisResult?.tags && analysisResult.tags.length > 0)) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-2">AI Tags</h4>
                         <div className="flex flex-wrap gap-2">
-                          {analysisResult.tags.map((tag, index) => (
+                          {(video.analysis?.tags || analysisResult?.tags || []).map((tag, index) => (
                             <Badge key={index} variant="outline" className="bg-background">{tag}</Badge>
                           ))}
                         </div>
                       </div>
                     )}
                     
-                    {analysisResult.feedback && (
+                    {(video.analysis?.feedback || analysisResult?.feedback) && (
                       <div className="p-3 rounded-md border border-border/30 bg-muted/20">
                         <h4 className="font-medium text-xs text-primary mb-1">Feedback</h4>
-                        <p className="text-sm">{analysisResult.feedback}</p>
+                        <p className="text-sm">{video.analysis?.feedback || analysisResult?.feedback}</p>
                       </div>
                     )}
                   </div>

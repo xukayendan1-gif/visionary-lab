@@ -20,6 +20,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { enhancePrompt, createFolder, MediaType, fetchFolders } from "@/services/api";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
+import { useFolderContext } from "@/context/folder-context";
 import { Input } from "@/components/ui/input";
 
 interface VideoOverlayProps {
@@ -31,7 +32,6 @@ interface VideoOverlayProps {
     variants: string;
     modality: string;
     analyzeVideo: boolean;
-    mode: string;
     brandsProtection: string;
     imageModel: string;
     hd: boolean;
@@ -67,6 +67,7 @@ export function VideoOverlay({
   // Add theme context
   const { theme, resolvedTheme } = useTheme();
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const { refreshFolders } = useFolderContext();
   
   // Move theme detection to useEffect to prevent hydration mismatch
   useEffect(() => {
@@ -82,8 +83,7 @@ export function VideoOverlay({
   const [prompt, setPrompt] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [modality, setModality] = useState("text-to-video");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [mode, setMode] = useState<"fast" | "quality">("quality");
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [model, setModel] = useState("sora-v1.1");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -220,6 +220,9 @@ export function VideoOverlay({
         if (onFolderCreated) {
           onFolderCreated(newFolderPath);
         }
+        
+        // Trigger sidebar refresh
+        refreshFolders();
       }
     } catch (error) {
       console.error("Error creating folder:", error);
@@ -253,6 +256,9 @@ export function VideoOverlay({
       if (result.folders && onFolderCreated) {
         // Update the parent component with the full folder list
         onFolderCreated(result.folders);
+        
+        // Trigger sidebar refresh
+        refreshFolders();
         
         toast.success("Folders refreshed", {
           description: `${result.folders.length} folders available`
@@ -293,7 +299,6 @@ export function VideoOverlay({
       variants,
       modality,
       analyzeVideo,
-      mode,
       brandsProtection,
       imageModel,
       hd,
@@ -464,10 +469,7 @@ export function VideoOverlay({
                               onValueChange={setAspectRatio}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[120px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[120px] h-8">
                                 <SelectValue placeholder="16:9" />
                               </SelectTrigger>
                               <SelectContent>
@@ -504,10 +506,7 @@ export function VideoOverlay({
                               onValueChange={setResolution}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[140px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[140px] h-8">
                                 <SelectValue placeholder="480p" />
                               </SelectTrigger>
                               <SelectContent>
@@ -544,10 +543,7 @@ export function VideoOverlay({
                               onValueChange={setDuration}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[120px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[120px] h-8">
                                 <div className="flex items-center">
                                   <Timer className="h-4 w-4 mr-2" />
                                   <SelectValue placeholder="5s" />
@@ -573,10 +569,7 @@ export function VideoOverlay({
                               onValueChange={setVariants}
                               disabled={isGenerating}
                             >
-                              <SelectTrigger className={cn(
-                                "w-[150px] h-8",
-                                getControlBgColor()
-                              )}>
+                              <SelectTrigger className="w-[150px] h-8">
                                 <div className="flex items-center">
                                   <Copy className="h-4 w-4 mr-2" />
                                   <SelectValue placeholder="2" />
@@ -611,10 +604,7 @@ export function VideoOverlay({
                                   }
                                 }}
                               >
-                                <SelectTrigger className={cn(
-                                  "w-[150px] h-8",
-                                  getControlBgColor()
-                                )}>
+                                <SelectTrigger className="w-[150px] h-8">
                                   <div className="flex items-center">
                                     <FolderTree className="h-4 w-4 mr-2 text-primary" />
                                     <SelectValue placeholder="Root folder" />

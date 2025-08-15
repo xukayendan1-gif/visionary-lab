@@ -15,6 +15,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   secret: process.env.AUTH_SECRET,
+  // Trust localhost and development URLs
+  trustHost: true,
   // If you want to add custom pages, you can do so here:
   // pages: {
   //   signIn: '/login', // Custom login page

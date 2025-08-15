@@ -31,6 +31,7 @@ export default function GenerateForm({
   const [quality, setQuality] = useState('auto');
   const [size] = useState('auto');
   const [outputFormat, setOutputFormat] = useState('png');
+  const [inputFidelity, setInputFidelity] = useState('low');
   const [showPromptIdeas, setShowPromptIdeas] = useState(false);
 
   // Create the debug mask URL on component mount
@@ -41,16 +42,10 @@ export default function GenerateForm({
 
   // Convert the mask to proper format for API (transparent where edits should happen)
   const getProperMaskForAPI = (): HTMLCanvasElement => {
-    console.log("----------------------------------------");
-    console.log("Creating proper mask for API in GenerateForm...");
-    
     // Create a properly formatted mask with transparency and alpha channel
     const properMaskCanvas = document.createElement('canvas');
     properMaskCanvas.width = originalImage.width;
     properMaskCanvas.height = originalImage.height;
-    
-    console.log("Original image dimensions:", originalImage.width, "x", originalImage.height);
-    console.log("Drawing canvas dimensions:", maskCanvas.width, "x", maskCanvas.height);
     
     // Get the context for the canvas
     const ctx = properMaskCanvas.getContext('2d', { willReadFrequently: true });
@@ -80,7 +75,6 @@ export default function GenerateForm({
     // Calculate scale factors
     const scaleX = originalImage.width / maskCanvas.width;
     const scaleY = originalImage.height / maskCanvas.height;
-    console.log("Scale factors:", scaleX.toFixed(2), "x", scaleY.toFixed(2));
     
     // Initialize all pixels as opaque black (areas to preserve)
     for (let i = 0; i < scaledMaskData.data.length; i += 4) {
@@ -118,17 +112,12 @@ export default function GenerateForm({
       }
     }
     
-    console.log("Total transparent pixels in final mask:", transparentPixels);
-    console.log("Transparent pixel percentage:", ((transparentPixels / (originalImage.width * originalImage.height)) * 100).toFixed(2) + "%");
-    
     // Put the modified data back
     ctx.putImageData(scaledMaskData, 0, 0);
     
     if (transparentPixels === 0) {
       console.error("ERROR: Final mask has no transparent pixels! API will not edit any part of the image.");
     }
-    
-    console.log("----------------------------------------");
     return properMaskCanvas;
   };
 
@@ -157,7 +146,6 @@ export default function GenerateForm({
       
       // Check if the original image is too large and needs optimization
       if (originalImage.file.size > 5 * 1024 * 1024) { // If larger than 5MB
-        console.log(`Original image is large (${(originalImage.file.size / 1024 / 1024).toFixed(2)}MB), optimizing...`);
         
         // Create a canvas to resize the image
         const canvas = document.createElement('canvas');
@@ -201,8 +189,7 @@ export default function GenerateForm({
                     lastModified: Date.now()
                   });
                   
-                  // Log the optimization results
-                  console.log(`Optimized image size from ${(originalImage.file.size / 1024 / 1024).toFixed(2)}MB to ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
+
                   
                   // Add to the form data
                   formData.append('image', optimizedFile);
@@ -220,7 +207,6 @@ export default function GenerateForm({
           });
         } else {
           // If context fails, use original
-          console.log('Context 2D not available, using original image');
           formData.append('image', originalImage.file);
         }
       } else {
@@ -245,6 +231,7 @@ export default function GenerateForm({
           formData.append('quality', quality);
           formData.append('size', size);
           formData.append('output_format', outputFormat);
+          formData.append('input_fidelity', inputFidelity);
           
           // Submit the form data
           await onSubmit(formData);
@@ -334,7 +321,7 @@ export default function GenerateForm({
         </div>
         
         <div className="flex items-center gap-3 mt-4">
-          <div className="grid grid-cols-2 gap-3 flex-1">
+          <div className="grid grid-cols-3 gap-3 flex-1">
             <div>
               <Label className="text-sm font-medium mb-1.5 block">
                 Image Quality
@@ -370,6 +357,24 @@ export default function GenerateForm({
                   <SelectItem value="png">PNG</SelectItem>
                   <SelectItem value="webp">WebP</SelectItem>
                   <SelectItem value="jpeg">JPEG</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">
+                Input Fidelity
+              </Label>
+              <Select 
+                value={inputFidelity} 
+                onValueChange={setInputFidelity}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select fidelity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
                 </SelectContent>
               </Select>
             </div>

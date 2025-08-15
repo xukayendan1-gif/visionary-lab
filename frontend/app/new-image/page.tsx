@@ -165,26 +165,71 @@ function NewImagePageContent() {
     setAutoRefresh(prev => !prev);
   };
 
+  // Create a separate auto-refresh function to avoid dependency issues
+  const autoRefreshImages = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      
+      // Fetch fresh images
+      const fetchedImages = await fetchImages(limit, 0, folderPath || undefined);
+      
+      // Map to the expected format
+      const mappedImages: ImageMetadata[] = fetchedImages.map(image => ({
+        src: image.src,
+        title: image.title,
+        description: image.description,
+        id: image.id,
+        name: image.name,
+        tags: image.tags,
+        originalItem: {
+          src: image.src,
+          id: image.id,
+          name: image.name,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          metadata: image.originalItem.metadata as any
+        },
+        width: image.width,
+        height: image.height,
+        size: image.size
+      }));
+      
+      setImages(mappedImages);
+      setOffset(0);
+      setHasMore(mappedImages.length >= limit);
+      
+      // Update last refreshed time
+      const now = new Date();
+      setLastRefreshed(now);
+      setLastRefreshedText(`Last refreshed ${formatDistanceToNow(now, { addSuffix: true })}`);
+      
+    } catch (error) {
+      console.error("Auto-refresh failed:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [limit, folderPath]);
+
   // Handle auto refresh toggle
   useEffect(() => {
     if (autoRefresh) {
       // Set up a refresh interval (every 30 seconds)
       const interval = setInterval(() => {
-        loadImages(true, true);
+        autoRefreshImages();
       }, 30000); // 30 seconds
       
       setRefreshInterval(interval);
       
       // Cleanup interval on component unmount or when autoRefresh is turned off
       return () => {
-        if (interval) clearInterval(interval);
+        clearInterval(interval);
+        setRefreshInterval(null);
       };
     } else if (refreshInterval) {
       // Clear the interval if auto refresh is turned off
       clearInterval(refreshInterval);
       setRefreshInterval(null);
     }
-  }, [autoRefresh, loadImages, refreshInterval]);
+  }, [autoRefresh, autoRefreshImages, refreshInterval]); // Only depend on autoRefresh and the stable autoRefreshImages function
 
   // Update the "time ago" text every minute
   useEffect(() => {
@@ -221,26 +266,24 @@ function NewImagePageContent() {
   // Generate skeleton placeholders for loading state
   const renderSkeletons = (count: number) => {
     return Array.from({ length: count }).map((_, index) => (
-      <div 
+      <Card 
         key={`skeleton-${index}`}
-        className="break-inside-avoid mb-4"
+        className="overflow-hidden border-0 rounded-xl h-full w-full"
       >
-        <Card className="overflow-hidden border-0 rounded-xl h-full w-full">
-          <AspectRatio ratio={
-            index % 5 === 0 
-              ? 16/9  // Landscape ratio for large items
-              : index % 3 === 0 
-                ? 3/4  // Portrait ratio for tall items
-                : 4/3  // Standard ratio for medium items
-          } className="bg-muted">
-            <Skeleton className="h-full w-full rounded-none" />
-          </AspectRatio>
-          <div className="p-3 space-y-2">
-            <Skeleton className="h-4 w-2/3" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        </Card>
-      </div>
+        <AspectRatio ratio={
+          index % 5 === 0 
+            ? 16/9  // Landscape ratio for large items
+            : index % 3 === 0 
+              ? 3/4  // Portrait ratio for tall items
+              : 4/3  // Standard ratio for medium items
+        } className="bg-muted">
+          <Skeleton className="h-full w-full rounded-none" />
+        </AspectRatio>
+        <div className="p-3 space-y-2">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      </Card>
     ));
   };
 
@@ -268,16 +311,8 @@ function NewImagePageContent() {
       // Add timestamp to URL to prevent caching issues
       const cacheBuster = `${image.src.includes('?') ? '&' : '?'}_t=${Date.now()}`;
       
-      // Use a specific proxy route for transparent PNGs if needed
-      const hasTransparency = image.originalItem?.metadata?.has_transparency === "true";
-      if (hasTransparency && image.originalItem?.url) {
-        console.log("Image has transparency, using original URL for dimension extraction");
-        // Try the original URL directly for dimension extraction
-        tempImg.src = image.originalItem.url + cacheBuster;
-      } else {
-        // Use the normal image src
-        tempImg.src = image.src + cacheBuster;
-      }
+      // Use the normal image src for all cases (now using SAS tokens)
+      tempImg.src = image.src + cacheBuster;
     }
     
     // Find the index of the clicked image
@@ -592,17 +627,13 @@ function NewImagePageContent() {
           </div>
           
           {loading ? (
-            <div className="w-full">
-              <div className="columns-1 sm:columns-2 md:columns-2 lg:columns-3 gap-4 space-y-4">
-                {renderSkeletons(16)}
-              </div>
-            </div>
+            <RowBasedMasonryGrid columns={3} gap={4}>
+              {renderSkeletons(16)}
+            </RowBasedMasonryGrid>
           ) : images.length > 0 ? (
             <div className="w-full">
-              {/* Masonry grid using CSS columns instead of grid for better space filling */}
-              <div 
-                className="columns-1 sm:columns-2 md:columns-2 lg:columns-3 gap-4 space-y-4"
-              >
+              {/* Row-based masonry grid for left-to-right, top-to-bottom ordering */}
+              <RowBasedMasonryGrid columns={3} gap={4}>
                 {images.map((image, index) => (
                   <div key={image.id} className="break-inside-avoid mb-4">
                     <ImageGalleryCard
@@ -613,7 +644,7 @@ function NewImagePageContent() {
                         // Remove the deleted image from the state
                         setImages(prevImages => prevImages.filter(img => img.id !== deletedImageId));
                         
-                        // If we've deleted an image, we might want to load another one to replace it
+                        // If we've moved an image, we might want to load another one to replace it
                         if (hasMore && images.length < limit * 2) {
                           loadMoreImages();
                         }
@@ -643,7 +674,7 @@ function NewImagePageContent() {
                     />
                   </div>
                 ))}
-              </div>
+              </RowBasedMasonryGrid>
               
               {/* Load more button */}
               {hasMore && (
