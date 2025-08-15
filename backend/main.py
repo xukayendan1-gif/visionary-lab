@@ -5,7 +5,7 @@ import os
 import logging
 
 from .core.config import settings
-from .api.endpoints import images, videos, gallery, env, batch
+from .api.endpoints import images, videos, gallery, env
 
 # Configure logging to suppress Azure Blob Storage verbose logs
 logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(
@@ -41,8 +41,6 @@ app.include_router(
 app.include_router(
     gallery.router, prefix=f"{settings.API_V1_STR}/gallery", tags=["gallery"])
 app.include_router(env.router, prefix=f"{settings.API_V1_STR}", tags=["env"])
-app.include_router(
-    batch.router, prefix=f"{settings.API_V1_STR}/batch", tags=["batch"])
 # app.include_router(organizer.router, prefix=f"{settings.API_V1_STR}/organizer", tags=["organizer"])
 # app.include_router(sora.router, prefix=f"{settings.API_V1_STR}/sora", tags=["sora"])
 
