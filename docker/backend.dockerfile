@@ -2,7 +2,20 @@
 # Base stage (shared between build and final) #
 ###############################################
 
-FROM python:3.13-slim AS base
+FROM ubuntu:22.04 AS base
+
+# Set non-interactive installation and timezone
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Berlin
+
+# Install Python 3.12
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata software-properties-common gnupg2 curl && \
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F23C5A6CF475977595C89F51BA6932366A755776 && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3.12 python3.12-venv python3.12-dev python3-pip && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
 
 ###############
 # Build stage #
@@ -37,7 +50,13 @@ COPY backend /app/backend
 
 FROM base
 
-RUN apt-get update && apt-get install -y libgl1-mesa-glx libglib2.0-0
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    curl
 
 RUN groupadd -r app
 RUN useradd -r -d /app -g app -N app
