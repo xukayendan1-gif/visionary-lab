@@ -1259,12 +1259,14 @@ export async function fetchFolders(
       console.log('Folders response data:', data);
     }
     
-    // Extract folder paths from folder objects
-    // The backend returns objects like {id: "...", folder_path: "...", asset_count: 0, media_types: [...]}
-    // But frontend expects string array
+    // Backend now returns simple string array
+    // But keep compatibility check in case of old format
     const folderPaths = data.folders ? 
-      data.folders.map((folder: any) => 
-        typeof folder === 'string' ? folder : folder.folder_path || folder.id
+      (Array.isArray(data.folders) && data.folders.length > 0 && typeof data.folders[0] === 'string' 
+        ? data.folders 
+        : data.folders.map((folder: any) => 
+            typeof folder === 'string' ? folder : folder.folder_path || folder.id
+          )
       ) : [];
     
     return {

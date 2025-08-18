@@ -877,25 +877,22 @@ async def list_folders(
         result = cosmos_service.get_all_folders(media_type=media_type_str)
 
         # Build folder hierarchy for UI
+        # result['folders'] now contains simple strings
         folder_hierarchy = {}
-        for folder_info in result['folders']:
-            folder_path = folder_info['folder_path']
-            
+        for folder_path in result['folders']:
             # Skip root folder for hierarchy building
             if folder_path == '/':
                 continue
                 
             # For single-level folders, add directly to hierarchy
+            # Since we don't have metadata anymore, just mark as present
             if '/' not in folder_path:
-                folder_hierarchy[folder_path] = {
-                    'asset_count': folder_info['asset_count'],
-                    'media_types': folder_info['media_types']
-                }
+                folder_hierarchy[folder_path] = {}
 
         return {
             "success": True,
             "message": "Folders retrieved successfully from Cosmos DB",
-            "folders": result['folders'],
+            "folders": result['folders'],  # Simple string array
             "folder_hierarchy": folder_hierarchy,
             "total_folders": result['total_folders'],
             "source": "cosmos_db"
