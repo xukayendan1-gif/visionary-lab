@@ -477,3 +477,131 @@ class CosmosDBService:
             f"Batch created {len(created_items)} out of {len(assets_data)} metadata records"
         )
         return created_items
+
+    def get_all_folders(self, media_type: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get all unique folder paths from assets in Cosmos DB
+
+        Args:
+            media_type: Optional filter by media type
+
+        Returns:
+            Dictionary with folder information
+        """
+        try:
+            # Try GROUP BY query first
+            try:
+                # Build query with GROUP BY
+                if media_type:
+                    query = f"""
+                    SELECT 
+                        COUNT(1) as asset_count,
+                        c.folder_path,
+                        c.media_type
+                    FROM c 
+                    WHERE c.media_type = '{media_type}'
+                    GROUP BY c.folder_path, c.media_type
+                    """
+                else:
+                    query = """
+                    SELECT 
+                        COUNT(1) as asset_count,
+                        c.folder_path,
+                        c.media_type
+                    FROM c
+                    GROUP BY c.folder_path, c.media_type
+                    """
+
+                logger.info(f"Executing folder query with GROUP BY: {query.strip()}")
+
+                items = list(self.container.query_items(query=query))
+
+                logger.info(f"GROUP BY query returned {len(items)} results")
+                if items:
+                    logger.debug(f"Sample results: {items[:3]}")  # Log first 3 items
+
+            except exceptions.CosmosHttpResponseError as group_error:
+                # Fallback to simple query and group in Python
+                logger.warning(f"GROUP BY not supported, using fallback: {group_error}")
+                
+                if media_type:
+                    query = f"""
+                    SELECT c.folder_path, c.media_type
+                    FROM c 
+                    WHERE c.media_type = '{media_type}'
+                    """
+                else:
+                    query = """
+                    SELECT c.folder_path, c.media_type
+                    FROM c
+                    """
+                
+                logger.info(f"Executing fallback query: {query.strip()}")
+                
+                raw_items = list(self.container.query_items(query=query))
+                
+                logger.info(f"Fallback query returned {len(raw_items)} raw results")
+                
+                # Group by folder_path and media_type in Python
+                grouped = {}
+                for item in raw_items:
+                    key = (item.get("folder_path", ""), item.get("media_type", "unknown"))
+                    if key not in grouped:
+                        grouped[key] = 0
+                    grouped[key] += 1
+                
+                # Transform to expected format
+                items = []
+                for (folder_path, media_type_val), count in grouped.items():
+                    items.append({
+                        "folder_path": folder_path,
+                        "media_type": media_type_val,
+                        "asset_count": count
+                    })
+                
+                logger.info(f"Python grouping produced {len(items)} grouped results")
+
+            # Aggregate results by folder_path (combining media_types)
+            folders = {}
+            for item in items:
+                folder_path = item.get("folder_path", "")
+
+                # Normalize folder path:
+                # - Empty string becomes "/" (root)
+                # - Remove trailing slash from non-root folders
+                if folder_path == "" or folder_path is None:
+                    folder_path = "/"
+                elif folder_path.endswith("/") and folder_path != "/":
+                    folder_path = folder_path.rstrip("/")
+
+                if folder_path not in folders:
+                    folders[folder_path] = {
+                        "id": folder_path,  # Add unique id field for React key
+                        "folder_path": folder_path,
+                        "asset_count": 0,
+                        "media_types": set(),
+                    }
+                folders[folder_path]["asset_count"] += item.get("asset_count", 0)
+                folders[folder_path]["media_types"].add(
+                    item.get("media_type", "unknown")
+                )
+
+            # Convert sets to lists for JSON serialization
+            for folder in folders.values():
+                folder["media_types"] = list(folder["media_types"])
+
+            # Sort folders alphabetically
+            sorted_folders = sorted(folders.values(), key=lambda x: x["folder_path"])
+
+            logger.info(f"Processed {len(sorted_folders)} unique folders")
+            logger.debug(f"Folder details: {sorted_folders}")
+
+            result = {"folders": sorted_folders, "total_folders": len(folders)}
+
+            logger.info(f"Returning {result['total_folders']} folders to client")
+
+            return result
+
+        except exceptions.CosmosHttpResponseError as e:
+            logger.error(f"Failed to get folders: {e}")
+            raise

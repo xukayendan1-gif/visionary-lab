@@ -44,7 +44,9 @@ def get_cosmos_service() -> Optional[CosmosDBService]:
     """Dependency to get Cosmos DB service instance (optional)"""
     try:
         # Check if we have either managed identity or key-based auth configured
-        if settings.AZURE_COSMOS_DB_ENDPOINT and (settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY):
+        if settings.AZURE_COSMOS_DB_ENDPOINT and (
+            settings.USE_MANAGED_IDENTITY or settings.AZURE_COSMOS_DB_KEY
+        ):
             return CosmosDBService()
         return None
     except Exception as e:
@@ -71,8 +73,8 @@ async def get_gallery_images(
         if not cosmos_service:
             logger.error("Cosmos DB service is not available")
             raise HTTPException(
-                status_code=503, 
-                detail="Cosmos DB service is not available. Please check your configuration."
+                status_code=503,
+                detail="Cosmos DB service is not available. Please check your configuration.",
             )
 
         # Parse tags if provided
@@ -847,3 +849,108 @@ async def metadata_service_status(
         }
 
     return status
+
+
+@router.get("/folders", response_model=Dict[str, Any])
+async def list_folders(
+    media_type: Optional[MediaType] = Query(
+        None, description="Filter folders by media type (image or video)"
+    ),
+    cosmos_service: Optional[CosmosDBService] = Depends(get_cosmos_service),
+):
+    """
+    List all folders from Cosmos DB metadata
+
+    This endpoint returns all unique folder paths from assets stored in Cosmos DB.
+    """
+    try:
+        # Check if Cosmos DB service is available
+        if not cosmos_service:
+            logger.error("Cosmos DB service is not available")
+            raise HTTPException(
+                status_code=503,
+                detail="Cosmos DB service is not available. Please check your configuration.",
+            )
+
+        # Get folders from Cosmos DB
+        media_type_str = media_type.value if media_type else None
+        result = cosmos_service.get_all_folders(media_type=media_type_str)
+
+        # Build folder hierarchy for UI
+        folder_hierarchy = {}
+        for folder_info in result['folders']:
+            folder_path = folder_info['folder_path']
+            
+            # Skip root folder for hierarchy building
+            if folder_path == '/':
+                continue
+                
+            # For single-level folders, add directly to hierarchy
+            if '/' not in folder_path:
+                folder_hierarchy[folder_path] = {
+                    'asset_count': folder_info['asset_count'],
+                    'media_types': folder_info['media_types']
+                }
+
+        return {
+            "success": True,
+            "message": "Folders retrieved successfully from Cosmos DB",
+            "folders": result['folders'],
+            "folder_hierarchy": folder_hierarchy,
+            "total_folders": result['total_folders'],
+            "source": "cosmos_db"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving folders from Cosmos DB: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/folders", response_model=Dict[str, Any])
+async def create_folder(
+    folder_path: str = Body(..., embed=True),
+    media_type: Optional[MediaType] = Body(None, embed=True),
+):
+    """
+    Create a logical folder (no database operation needed)
+
+    Since folders are virtual and only exist through the folder_path attribute in assets,
+    this endpoint just validates the folder name and returns success.
+    The folder will "exist" when the first asset is added with this folder_path.
+    """
+    try:
+        # Validate folder name
+        folder_path = folder_path.strip()
+        if not folder_path:
+            raise HTTPException(status_code=400, detail="Folder path cannot be empty")
+
+        # Remove leading/trailing slashes for consistency
+        folder_path = folder_path.strip("/")
+        
+        # Don't allow creating root folder
+        if folder_path == "":
+            raise HTTPException(status_code=400, detail="Cannot create root folder")
+
+        # Basic validation - allow alphanumeric, hyphens, underscores, spaces
+        if not re.match(r"^[a-zA-Z0-9\-_ ]+$", folder_path):
+            raise HTTPException(
+                status_code=400,
+                detail="Folder path can only contain alphanumeric characters, hyphens, underscores, and spaces",
+            )
+
+        # Return success - folder is virtual and will exist when assets are added
+        return {
+            "success": True,
+            "message": f"Folder '{folder_path}' is ready to use. It will appear in the list when assets are added.",
+            "folder_path": folder_path,
+            "media_type": media_type.value if media_type else "any",
+            "created": True,
+            "virtual": True,
+            "note": "Folders are virtual and exist only through asset metadata"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in create_folder: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

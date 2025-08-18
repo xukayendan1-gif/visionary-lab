@@ -1259,8 +1259,16 @@ export async function fetchFolders(
       console.log('Folders response data:', data);
     }
     
+    // Extract folder paths from folder objects
+    // The backend returns objects like {id: "...", folder_path: "...", asset_count: 0, media_types: [...]}
+    // But frontend expects string array
+    const folderPaths = data.folders ? 
+      data.folders.map((folder: any) => 
+        typeof folder === 'string' ? folder : folder.folder_path || folder.id
+      ) : [];
+    
     return {
-      folders: data.folders || [],
+      folders: folderPaths,
       folder_hierarchy: data.folder_hierarchy || {}
     };
   } catch (error) {
