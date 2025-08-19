@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { VideoCard } from "@/components/VideoCard";
 import { PageHeader } from "@/components/page-header";
 import { fetchVideos, VideoMetadata } from "@/utils/gallery-utils";
-import { Loader2, RefreshCw, Clock, Video, VideoOff, FolderIcon, FileVideo, CheckSquare } from "lucide-react";
+import { Loader2, RefreshCw, Clock, Video, VideoOff, FolderIcon, FileVideo, CheckSquare, Plus, Minus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -46,6 +46,8 @@ export default function GalleryPage() {
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [lastRefreshedText, setLastRefreshedText] = useState<string>("Never refreshed");
+  // Gallery layout state
+  const [gridColumns, setGridColumns] = useState<number>(3);
   // Multi-select state
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -339,40 +341,63 @@ export default function GalleryPage() {
           </div>
           
           <div className="flex items-center space-x-2">
+            {/* Selection mode toggle button */}
             <Button
               variant={selectionMode ? "default" : "outline"}
-              size="sm"
+              size="icon"
               onClick={toggleSelectionMode}
-              className="mr-2 font-medium"
-              style={{ minWidth: "120px" }}
+              className="mr-2 h-8 w-8"
+              title={selectionMode ? 'Cancel Selection' : 'Select Items'}
             >
-              <CheckSquare className="h-4 w-4 mr-2" />
-              {selectionMode ? 'Cancel Selection' : 'Select Items'}
+              <CheckSquare className="h-4 w-4" />
+              <span className="sr-only">{selectionMode ? 'Cancel Selection' : 'Select Items'}</span>
             </Button>
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant={autoRefresh ? "outline" : "ghost"}
-                    className={`relative h-8 w-8 ${autoRefresh ? 'border-primary text-primary' : 'text-muted-foreground'}`}
-                    onClick={toggleAutoRefresh}
-                  >
-                    <Clock className="h-4 w-4" />
-                    {autoRefresh && (
-                      <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
-                    )}
-                    <span className="sr-only">
-                      {autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  {autoRefresh ? 'Auto-refresh every 30s (on)' : 'Auto-refresh every 30s (off)'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {/* Decrease columns button */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 mr-1"
+              onClick={() => setGridColumns(prev => Math.max(1, prev - 1))}
+              disabled={gridColumns <= 1}
+              title="Decrease columns"
+            >
+              <Minus className="h-4 w-4" />
+              <span className="sr-only">Decrease columns</span>
+            </Button>
+            
+            {/* Column count indicator */}
+            <span className="text-xs font-medium mx-1 min-w-[20px] text-center">{gridColumns}</span>
+            
+            {/* Increase columns button */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 mr-2"
+              onClick={() => setGridColumns(prev => Math.min(6, prev + 1))}
+              disabled={gridColumns >= 6}
+              title="Increase columns"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="sr-only">Increase columns</span>
+            </Button>
+
+            {/* Auto-refresh toggle button */}
+            <Button
+              size="icon"
+              variant={autoRefresh ? "outline" : "ghost"}
+              className={`relative h-8 w-8 ${autoRefresh ? 'border-primary text-primary' : 'text-muted-foreground'}`}
+              onClick={toggleAutoRefresh}
+              title={autoRefresh ? 'Auto-refresh every 30s (on)' : 'Auto-refresh every 30s (off)'}
+            >
+              <Clock className="h-4 w-4" />
+              {autoRefresh && (
+                <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+              <span className="sr-only">
+                {autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+              </span>
+            </Button>
 
             <Button 
               variant="outline" 
@@ -384,23 +409,16 @@ export default function GalleryPage() {
               <span className="sr-only">Refresh gallery</span>
             </Button>
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={autoPlay ? "default" : "outline"}
-                    size="icon"
-                    onClick={toggleAutoPlay}
-                  >
-                    {autoPlay ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                    <span className="sr-only">{autoPlay ? 'Disable auto-play' : 'Enable auto-play'}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  {autoPlay ? 'Auto-play videos (on)' : 'Auto-play videos (off)'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {/* Auto-play toggle button */}
+            <Button
+              variant={autoPlay ? "default" : "outline"}
+              size="icon"
+              onClick={toggleAutoPlay}
+              title={autoPlay ? 'Auto-play videos (on)' : 'Auto-play videos (off)'}
+            >
+              {autoPlay ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+              <span className="sr-only">{autoPlay ? 'Disable auto-play' : 'Enable auto-play'}</span>
+            </Button>
           </div>
         </div>
 
@@ -424,11 +442,11 @@ export default function GalleryPage() {
                 )}
 
                 {loading ? (
-                  <RowBasedMasonryGrid columns={3} gap={4}>
+                  <RowBasedMasonryGrid columns={gridColumns} gap={4}>
                     {renderSkeletons(12)}
                   </RowBasedMasonryGrid>
                 ) : videos.length > 0 ? (
-                  <RowBasedMasonryGrid columns={3} gap={4}>
+                  <RowBasedMasonryGrid columns={gridColumns} gap={4}>
                     {videos.map((video) => (
                       <VideoCard
                         key={video.id}

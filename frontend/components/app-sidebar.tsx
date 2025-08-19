@@ -231,7 +231,11 @@ export function AppSidebar() {
               {createItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <Link href={item.url} passHref legacyBehavior>
-                    <SidebarMenuButton asChild className="group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+                    <SidebarMenuButton 
+                      asChild 
+                      data-active={mounted ? pathname === item.url : false}
+                      className="group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 data-[active=true]:bg-accent"
+                    >
                       <a title={item.description}>
                         <item.icon className="h-4 w-4 group-data-[collapsible=icon]:h-5 group-data-[collapsible=icon]:w-5" />
                         <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
@@ -275,7 +279,7 @@ export function AppSidebar() {
                       <Link href="/new-video" passHref legacyBehavior>
                         <SidebarMenuButton 
                           asChild
-                          data-active={isVideoFolderActive(null)}
+                          data-active={mounted ? isVideoFolderActive(null) : false}
                           className="data-[active=true]:bg-accent"
                         >
                           <a>
@@ -301,7 +305,7 @@ export function AppSidebar() {
                           <SidebarMenuItem>
                             <SidebarMenuButton 
                               asChild
-                              data-active={isVideoFolderActive(folder)}
+                              data-active={mounted ? isVideoFolderActive(folder) : false}
                               className="data-[active=true]:bg-accent"
                               onClick={() => handleVideoFolderClick(folder)}
                             >
@@ -352,7 +356,7 @@ export function AppSidebar() {
                       <Link href="/new-image" passHref legacyBehavior>
                         <SidebarMenuButton 
                           asChild
-                          data-active={isImageFolderActive(null)}
+                          data-active={mounted ? isImageFolderActive(null) : false}
                           className="data-[active=true]:bg-accent"
                         >
                           <a>
@@ -378,7 +382,7 @@ export function AppSidebar() {
                           <SidebarMenuItem>
                             <SidebarMenuButton 
                               asChild
-                              data-active={isImageFolderActive(folder)}
+                              data-active={mounted ? isImageFolderActive(folder) : false}
                               className="data-[active=true]:bg-accent"
                               onClick={() => handleImageFolderClick(folder)}
                             >
@@ -406,7 +410,11 @@ export function AppSidebar() {
               {manageItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <Link href={item.url} passHref legacyBehavior>
-                    <SidebarMenuButton asChild className="group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+                    <SidebarMenuButton 
+                      asChild 
+                      data-active={mounted ? pathname === item.url : false}
+                      className="group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 data-[active=true]:bg-accent"
+                    >
                       <a title={item.description}>
                         <item.icon className="h-4 w-4 group-data-[collapsible=icon]:h-5 group-data-[collapsible=icon]:w-5" />
                         <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>

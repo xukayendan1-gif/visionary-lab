@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { PageHeader } from "@/components/page-header";
-import { Loader2, RefreshCw, Clock, ImageIcon, CheckSquare } from "lucide-react";
+import { Loader2, RefreshCw, Clock, ImageIcon, CheckSquare, Plus, Minus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -72,6 +72,8 @@ function NewImagePageContent() {
   // Multi-select state
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  // Grid columns state
+  const [gridColumns, setGridColumns] = useState<number>(3);
 
   const limit = 50;
 
@@ -580,40 +582,64 @@ function NewImagePageContent() {
             </div>
             
             <div className="flex items-center space-x-2">
+              {/* Selection mode toggle button */}
               <Button
                 variant={selectionMode ? "default" : "outline"}
-                size="sm"
+                size="icon"
                 onClick={toggleSelectionMode}
-                className="mr-2 font-medium"
-                style={{ minWidth: "120px" }}
+                className="mr-2 h-8 w-8"
+                title={selectionMode ? 'Cancel Selection' : 'Select Items'}
               >
-                <CheckSquare className="h-4 w-4 mr-2" />
-                {selectionMode ? 'Cancel Selection' : 'Select Items'}
+                <CheckSquare className="h-4 w-4" />
+                <span className="sr-only">{selectionMode ? 'Cancel Selection' : 'Select Items'}</span>
               </Button>
 
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant={autoRefresh ? "outline" : "ghost"}
-                      className={`relative h-8 w-8 ${autoRefresh ? 'border-primary text-primary' : 'text-muted-foreground'}`}
-                      onClick={toggleAutoRefresh}
-                    >
-                      <Clock className="h-4 w-4" />
-                      {autoRefresh && (
-                        <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
-                      )}
-                      <span className="sr-only">
-                        {autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
-                      </span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    {autoRefresh ? 'Auto-refresh every 30s (on)' : 'Auto-refresh every 30s (off)'}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {/* Decrease columns button */}
+              {/* Decrease columns button */}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 mr-1"
+                onClick={() => setGridColumns(prev => Math.max(1, prev - 1))}
+                disabled={gridColumns <= 1}
+                title="Decrease columns"
+              >
+                <Minus className="h-4 w-4" />
+                <span className="sr-only">Decrease columns</span>
+              </Button>
+              
+              {/* Column count indicator */}
+              <span className="text-xs font-medium mx-1 min-w-[20px] text-center">{gridColumns}</span>
+              
+              {/* Increase columns button */}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 mr-2"
+                onClick={() => setGridColumns(prev => Math.min(6, prev + 1))}
+                disabled={gridColumns >= 6}
+                title="Increase columns"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="sr-only">Increase columns</span>
+              </Button>
+
+              {/* Auto-refresh toggle button */}
+              <Button
+                size="icon"
+                variant={autoRefresh ? "outline" : "ghost"}
+                className={`relative h-8 w-8 ${autoRefresh ? 'border-primary text-primary' : 'text-muted-foreground'}`}
+                onClick={toggleAutoRefresh}
+                title={autoRefresh ? 'Auto-refresh every 30s (on)' : 'Auto-refresh every 30s (off)'}
+              >
+                <Clock className="h-4 w-4" />
+                {autoRefresh && (
+                  <span className="absolute bottom-1 right-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                )}
+                <span className="sr-only">
+                  {autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+                </span>
+              </Button>
 
               <Button 
                 variant="outline" 
@@ -628,13 +654,13 @@ function NewImagePageContent() {
           </div>
           
           {loading ? (
-            <RowBasedMasonryGrid columns={3} gap={4}>
+            <RowBasedMasonryGrid columns={gridColumns} gap={4}>
               {renderSkeletons(16)}
             </RowBasedMasonryGrid>
           ) : images.length > 0 ? (
             <div className="w-full">
               {/* Row-based masonry grid for left-to-right, top-to-bottom ordering */}
-              <RowBasedMasonryGrid columns={3} gap={4}>
+              <RowBasedMasonryGrid columns={gridColumns} gap={4}>
                 {images.map((image, index) => (
                   <div key={image.id} className="break-inside-avoid mb-4">
                     <ImageGalleryCard
@@ -780,6 +806,9 @@ function NewImagePageContent() {
     </div>
   );
 }
+
+// Make NewImagePageContent available for direct import
+export { NewImagePageContent };
 
 export default function NewImagePage() {
   return (
